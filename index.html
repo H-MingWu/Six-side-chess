@@ -1,0 +1,5380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#05080c" />
+  <title>六边暗棋 · 策略交战</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    :root {
+      color-scheme: dark;
+      --bg: #05080c;
+      --text: #eaf3f8;
+      --muted: #849aa7;
+      --muted-2: #5b707c;
+      --line: rgba(136, 184, 204, 0.13);
+      --line-strong: rgba(136, 184, 204, 0.22);
+      --cyan: #59e5ff;
+      --cyan-rgb: 89, 229, 255;
+      --violet-rgb: 167, 139, 250;
+      --pink-rgb: 255, 120, 200;
+      --gold-rgb: 255, 207, 124;
+      --combat-rgb: 255, 168, 96;
+      --font-sans: "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --font-mono: "Cascadia Code", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --hex-w: clamp(48px, 7.8vw, 96px);
+      --hex-h: calc(var(--hex-w) * 1.1547005);
+      --step-x: var(--hex-w);
+      --step-y: calc(var(--hex-h) * 0.75);
+      --board-w: calc(var(--step-x) * 4 + var(--hex-w));
+      --board-h: calc(var(--step-y) * 4 + var(--hex-h));
+      --hex-clip: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      --page-pad: clamp(16px, 4vw, 32px);
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--bg);
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      overflow-x: hidden;
+      color: var(--text);
+      background:
+        radial-gradient(1000px 700px at 78% -10%, rgba(37, 160, 190, 0.16), transparent 62%),
+        radial-gradient(820px 620px at 0% 110%, rgba(102, 76, 201, 0.14), transparent 64%),
+        linear-gradient(180deg, #070b11 0%, #04070b 100%);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(128, 178, 198, 0.032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(128, 178, 198, 0.032) 1px, transparent 1px);
+      background-size: 64px 64px;
+      -webkit-mask-image: radial-gradient(ellipse 82% 72% at 50% 42%, #000 22%, transparent 80%);
+      mask-image: radial-gradient(ellipse 82% 72% at 50% 42%, #000 22%, transparent 80%);
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at 50% 42%, transparent 38%, rgba(0, 0, 0, 0.46) 100%);
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: clamp(22px, 4vw, 40px) var(--page-pad) clamp(28px, 5vw, 48px);
+    }
+
+    /* ---------- 顶部 ---------- */
+
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: clamp(16px, 2.6vw, 24px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand__mark {
+      position: relative;
+      width: 36px;
+      height: 40px;
+      flex: none;
+      clip-path: var(--hex-clip);
+      background: linear-gradient(155deg, rgba(var(--cyan-rgb), 0.95), rgba(var(--violet-rgb), 0.5));
+      filter: drop-shadow(0 0 14px rgba(var(--cyan-rgb), 0.28));
+    }
+
+    .brand__mark::before {
+      content: "";
+      position: absolute;
+      inset: 1.5px;
+      clip-path: var(--hex-clip);
+      background: #081018;
+    }
+
+    .brand__mark::after {
+      content: "";
+      position: absolute;
+      inset: 13px 12px;
+      clip-path: var(--hex-clip);
+      background: linear-gradient(160deg, rgba(var(--cyan-rgb), 0.95), rgba(var(--violet-rgb), 0.55));
+    }
+
+    .brand__text {
+      min-width: 0;
+    }
+
+    .brand__eyebrow {
+      margin: 0 0 4px;
+      color: rgba(var(--cyan-rgb), 0.64);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1;
+      letter-spacing: 0.26em;
+      white-space: nowrap;
+    }
+
+    .brand h1 {
+      margin: 0;
+      color: transparent;
+      background: linear-gradient(115deg, #f8fcff 15%, #c3e8f0 58%, #e5d9ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      font-size: clamp(22px, 2.3vw, 28px);
+      font-weight: 650;
+      line-height: 1.05;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex: none;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(10, 16, 23, 0.62);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      white-space: nowrap;
+      backdrop-filter: blur(10px);
+    }
+
+    .status__dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 10px rgba(var(--cyan-rgb), 0.9);
+      animation: status-pulse 2.6s ease-in-out infinite;
+    }
+
+    .status__divider {
+      width: 1px;
+      height: 10px;
+      background: var(--line-strong);
+    }
+
+    .status__version {
+      color: rgba(var(--cyan-rgb), 0.82);
+    }
+
+    /* ---------- 回合条 ---------- */
+
+    .turn-bar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(150deg, rgba(16, 25, 35, 0.8), rgba(7, 12, 18, 0.9));
+      box-shadow:
+        0 16px 45px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(12px);
+      transition: border-color 0.25s ease;
+    }
+
+    .turn-bar[data-turn="opponent"] {
+      border-color: rgba(var(--pink-rgb), 0.22);
+    }
+
+    .turn-bar[data-phase="combat"] {
+      border-color: rgba(var(--combat-rgb), 0.32);
+    }
+
+    .turn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: none;
+      min-width: max-content;
+    }
+
+    .turn-indicator__orb {
+      width: 9px;
+      height: 9px;
+      flex: none;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 12px rgba(var(--cyan-rgb), 0.8);
+      transition: background 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .turn-indicator__copy {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .turn-indicator__label {
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      letter-spacing: 0.12em;
+    }
+
+    .turn-indicator__name {
+      color: rgba(200, 248, 255, 0.96);
+      font-size: 18px;
+      font-weight: 650;
+      line-height: 1;
+      letter-spacing: 0.04em;
+      transition: color 0.25s ease;
+    }
+
+    .turn-indicator__side {
+      padding-left: 10px;
+      border-left: 1px solid var(--line);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      letter-spacing: 0.05em;
+    }
+
+    .turn-bar[data-turn="opponent"] .turn-indicator__orb {
+      background: rgba(var(--pink-rgb), 0.95);
+      box-shadow: 0 0 13px rgba(var(--pink-rgb), 0.72);
+    }
+
+    .turn-bar[data-turn="opponent"] .turn-indicator__name {
+      color: rgba(var(--pink-rgb), 0.96);
+    }
+
+    .turn-bar[data-phase="combat"] .turn-indicator__orb {
+      background: rgb(var(--combat-rgb));
+      box-shadow: 0 0 13px rgba(var(--combat-rgb), 0.8);
+    }
+
+    .turn-bar[data-phase="combat"] .turn-indicator__name {
+      color: rgba(var(--combat-rgb), 0.98);
+    }
+
+    .turn-bar[data-phase="combat"] .turn-note {
+      color: rgba(var(--combat-rgb), 0.8);
+    }
+
+    .turn-bar[data-phase="thinking"] .turn-indicator__orb {
+      animation: enemy-thinking 1.1s ease-in-out infinite;
+    }
+
+    .turn-bar[data-phase="thinking"] .turn-note {
+      color: rgba(var(--pink-rgb), 0.8);
+    }
+
+    .turn-bar[data-phase="settling"] {
+      border-color: rgba(var(--gold-rgb), 0.34);
+    }
+
+    .turn-bar[data-phase="settling"] .turn-indicator__orb {
+      background: rgb(var(--gold-rgb));
+      box-shadow: 0 0 14px rgba(var(--gold-rgb), 0.82);
+      animation: settle-pulse 0.9s ease-in-out infinite;
+    }
+
+    .turn-bar[data-phase="settling"] .turn-indicator__name {
+      color: rgba(var(--gold-rgb), 0.98);
+    }
+
+    .turn-bar[data-phase="settling"] .turn-note {
+      color: rgba(var(--gold-rgb), 0.82);
+    }
+
+    .turn-bar[data-phase="war"] {
+      border-color: rgba(255, 82, 103, 0.38);
+    }
+
+    .turn-bar[data-phase="war"] .turn-indicator__orb {
+      background: rgb(255, 82, 103);
+      box-shadow: 0 0 14px rgba(255, 82, 103, 0.82);
+      animation: settle-pulse 0.9s ease-in-out infinite;
+    }
+
+    .turn-bar[data-phase="war"] .turn-indicator__name {
+      color: rgba(255, 138, 154, 0.98);
+    }
+
+    .turn-bar[data-phase="war"] .turn-note {
+      color: rgba(255, 152, 166, 0.86);
+    }
+
+    .turn-bar[data-turn="over"] {
+      border-color: rgba(var(--gold-rgb), 0.24);
+    }
+
+    .turn-bar[data-turn="over"] .turn-indicator__orb {
+      background: rgb(var(--gold-rgb));
+      box-shadow: 0 0 13px rgba(var(--gold-rgb), 0.72);
+    }
+
+    .turn-bar[data-turn="over"] .turn-indicator__name {
+      color: rgba(var(--gold-rgb), 0.96);
+    }
+
+    .turn-bar[data-turn="over"] .turn-note {
+      color: rgba(var(--gold-rgb), 0.78);
+    }
+
+    .turn-note {
+      flex: 1 1 260px;
+      margin: 0;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1.5;
+      letter-spacing: 0.03em;
+      transition: color 0.25s ease;
+    }
+
+    .round-counter {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      flex: none;
+      margin-left: auto;
+      padding: 7px 11px;
+      border: 1px solid rgba(var(--cyan-rgb), 0.2);
+      border-radius: 11px;
+      background: linear-gradient(150deg, rgba(15, 30, 39, 0.72), rgba(7, 14, 20, 0.86));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+      font-family: var(--font-mono);
+      transition: border-color 0.25s ease, background 0.25s ease;
+    }
+
+    .round-counter__label {
+      color: var(--muted-2);
+      font-size: 8px;
+      letter-spacing: 0.14em;
+    }
+
+    .round-counter__value {
+      color: rgba(200, 248, 255, 0.96);
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .round-counter__max {
+      color: var(--muted-2);
+      font-size: 8px;
+    }
+
+    .round-counter__remain {
+      margin-left: 2px;
+      padding-left: 8px;
+      border-left: 1px solid var(--line);
+      color: var(--muted-2);
+      font-size: 7.5px;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+
+    .round-counter[data-tense="near"] {
+      border-color: rgba(var(--combat-rgb), 0.35);
+      background: linear-gradient(150deg, rgba(42, 31, 18, 0.72), rgba(12, 14, 18, 0.88));
+    }
+
+    .round-counter[data-tense="near"] .round-counter__value {
+      color: rgba(var(--combat-rgb), 0.98);
+    }
+
+    .round-counter[data-tense="final"] {
+      border-color: rgba(var(--pink-rgb), 0.45);
+      background: linear-gradient(150deg, rgba(43, 20, 30, 0.78), rgba(13, 11, 18, 0.9));
+    }
+
+    .round-counter[data-tense="final"] .round-counter__value {
+      color: rgba(var(--pink-rgb), 0.98);
+    }
+
+    .settle-bar {
+      position: fixed;
+      top: clamp(10px, 2vh, 18px);
+      left: 50%;
+      z-index: 78;
+      width: min(92vw, 560px);
+      padding: 10px 14px 9px;
+      border: 1px solid rgba(var(--gold-rgb), 0.34);
+      border-radius: 14px;
+      background: linear-gradient(150deg, rgba(32, 27, 20, 0.96), rgba(8, 12, 17, 0.97));
+      box-shadow:
+        0 18px 48px rgba(0, 0, 0, 0.52),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 0 34px rgba(var(--gold-rgb), 0.08);
+      pointer-events: none;
+      transform: translateX(-50%);
+      animation: settle-in 0.2s ease both;
+      backdrop-filter: blur(12px);
+    }
+
+    .settle-bar[hidden] {
+      display: none;
+    }
+
+    .settle-bar__main {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .settle-bar__pulse {
+      width: 6px;
+      height: 6px;
+      flex: none;
+      border-radius: 50%;
+      background: rgb(var(--gold-rgb));
+      box-shadow: 0 0 12px rgba(var(--gold-rgb), 0.85);
+      animation: settle-pulse 0.9s ease-in-out infinite;
+    }
+
+    .settle-bar__label {
+      color: rgba(255, 231, 181, 0.98);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.05em;
+    }
+
+    .settle-bar__duration {
+      margin-left: auto;
+      color: rgba(var(--gold-rgb), 0.64);
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .settle-bar__track {
+      margin-top: 7px;
+      height: 3px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    .settle-bar__fill {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.84), rgba(var(--gold-rgb), 0.95), rgba(var(--pink-rgb), 0.82));
+      transform: scaleX(0);
+      transform-origin: left center;
+    }
+
+    .settle-bar.is-active .settle-bar__fill {
+      animation: settle-progress var(--settle-duration, 1000ms) linear forwards;
+    }
+
+    @keyframes settle-progress {
+      from {
+        transform: scaleX(0);
+      }
+      to {
+        transform: scaleX(1);
+      }
+    }
+
+    @keyframes settle-pulse {
+      0%,
+      100% {
+        opacity: 0.55;
+        transform: scale(0.84);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.16);
+      }
+    }
+
+    @keyframes settle-in {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -5px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+
+    .war-prompt {
+      flex: 1 1 100%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 9px 12px;
+      border: 1px solid rgba(255, 82, 103, 0.28);
+      border-radius: 12px;
+      background:
+        radial-gradient(circle at 4% 50%, rgba(255, 82, 103, 0.1), transparent 34%),
+        linear-gradient(150deg, rgba(35, 22, 28, 0.86), rgba(9, 13, 19, 0.9));
+      animation: war-in 0.22s cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+
+    .war-prompt[hidden] {
+      display: none;
+    }
+
+    .war-prompt__copy {
+      min-width: 0;
+    }
+
+    .war-prompt__title {
+      margin: 0;
+      color: #ffd9df;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
+
+    .war-prompt__detail {
+      margin: 3px 0 0;
+      color: #a98891;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1.5;
+    }
+
+    .war-prompt__actions {
+      display: flex;
+      gap: 8px;
+      flex: none;
+      margin-left: auto;
+    }
+
+    .war-prompt__skip,
+    .war-prompt__declare {
+      min-width: 70px;
+      padding: 7px 15px;
+      border-radius: 9px;
+      font-family: var(--font-sans);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+    }
+
+    .war-prompt__skip {
+      border: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--muted);
+    }
+
+    .war-prompt__skip:hover {
+      border-color: rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.07);
+      color: #d4e4ec;
+    }
+
+    .war-prompt__declare {
+      border: 1px solid rgba(255, 82, 103, 0.46);
+      background: rgba(255, 82, 103, 0.16);
+      color: #ffd7dd;
+    }
+
+    .war-prompt__declare:hover {
+      border-color: rgba(255, 82, 103, 0.72);
+      background: rgba(255, 82, 103, 0.26);
+    }
+
+    @keyframes war-in {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ---------- 主布局 ---------- */
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 268px;
+      grid-template-areas:
+        "board side"
+        "log log";
+      gap: 18px;
+      align-items: start;
+    }
+
+    .board-card {
+      grid-area: board;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: linear-gradient(160deg, rgba(17, 26, 37, 0.88), rgba(7, 12, 18, 0.94));
+      box-shadow:
+        0 30px 90px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      backdrop-filter: blur(16px);
+      animation: card-in 0.8s cubic-bezier(0.16, 0.8, 0.2, 1) both;
+    }
+
+    .board-card::before {
+      content: "";
+      position: absolute;
+      z-index: 3;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(var(--cyan-rgb), 0.5),
+        rgba(var(--violet-rgb), 0.35),
+        transparent
+      );
+    }
+
+    .board-card::after {
+      content: "";
+      position: absolute;
+      right: -170px;
+      bottom: -230px;
+      width: 460px;
+      height: 460px;
+      border-radius: 50%;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(var(--violet-rgb), 0.12), transparent 66%);
+    }
+
+    .board-card__header {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 18px 24px;
+      padding: 22px 24px 0;
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      line-height: 1.2;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .heading h2 {
+      margin: 5px 0 0;
+      font-size: clamp(18px, 2vw, 22px);
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+
+    .heading h2 span {
+      margin-left: 10px;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      padding-bottom: 2px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+    }
+
+    .legend__item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .legend__swatch {
+      width: 11px;
+      height: 12.7px;
+      flex: none;
+      clip-path: var(--hex-clip);
+    }
+
+    .legend__swatch--player {
+      background: rgba(94, 194, 255, 0.92);
+      filter: drop-shadow(0 0 5px rgba(94, 194, 255, 0.55));
+    }
+
+    .legend__swatch--enemy {
+      background: rgba(255, 82, 103, 0.92);
+      filter: drop-shadow(0 0 5px rgba(255, 82, 103, 0.55));
+    }
+
+    /* ---------- 棋盘 ---------- */
+
+    .board-field {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      padding: clamp(26px, 4vw, 42px) clamp(12px, 3vw, 28px);
+      isolation: isolate;
+    }
+
+    .board-field::before {
+      content: "";
+      position: absolute;
+      inset: 8% 8%;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 50% 46%, rgba(var(--cyan-rgb), 0.1), transparent 62%),
+        radial-gradient(ellipse at 50% 86%, rgba(var(--violet-rgb), 0.07), transparent 60%);
+      filter: blur(18px);
+    }
+
+    .board-field::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      width: min(74%, 460px);
+      aspect-ratio: 1.12;
+      border: 1px solid rgba(var(--cyan-rgb), 0.07);
+      border-radius: 50%;
+      pointer-events: none;
+      transform: rotate(-6deg);
+    }
+
+    .board {
+      position: relative;
+      width: var(--board-w);
+      height: var(--board-h);
+    }
+
+    .cell {
+      --accent-rgb: 132, 178, 198;
+      --edge-a: 0.36;
+      --edge-b: 0.1;
+      --glow-a: 0.2;
+      --glow-b: 0.08;
+      --aura-a: 0.16;
+
+      position: absolute;
+      z-index: 1;
+      width: var(--hex-w);
+      height: var(--hex-h);
+      left: calc(50% + var(--x) * var(--step-x) - var(--hex-w) / 2);
+      top: calc(50% + var(--r) * var(--step-y) - var(--hex-h) / 2);
+      transition: transform 0.22s ease;
+      animation: cell-in 0.55s cubic-bezier(0.2, 0.75, 0.2, 1) backwards;
+      animation-delay: var(--delay, 0ms);
+    }
+
+    .cell__aura {
+      position: absolute;
+      inset: -7%;
+      z-index: 0;
+      border-radius: 50%;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 52%, rgba(var(--accent-rgb), var(--aura-a)), transparent 66%);
+      filter: blur(10px);
+      opacity: 0.78;
+      transition: opacity 0.22s ease;
+    }
+
+    .cell__hex {
+      position: absolute;
+      z-index: 1;
+      inset: 1px;
+      clip-path: var(--hex-clip);
+      background: linear-gradient(
+        155deg,
+        rgba(var(--accent-rgb), var(--edge-a)) 0%,
+        rgba(136, 176, 195, 0.12) 38%,
+        rgba(var(--accent-rgb), var(--edge-b)) 100%
+      );
+      filter:
+        drop-shadow(0 0 3px rgba(var(--accent-rgb), var(--glow-a)))
+        drop-shadow(0 0 11px rgba(var(--accent-rgb), var(--glow-b)));
+      transition: filter 0.22s ease, background 0.22s ease;
+    }
+
+    .cell__face {
+      position: absolute;
+      inset: 1.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      clip-path: var(--hex-clip);
+      background:
+        radial-gradient(circle at 50% 18%, rgba(var(--accent-rgb), 0.14), transparent 58%),
+        linear-gradient(160deg, rgba(20, 30, 41, 0.985), rgba(6, 11, 17, 0.995));
+    }
+
+    .cell__face::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 34%);
+    }
+
+    .cell__pip {
+      width: 5px;
+      height: 5.8px;
+      flex: none;
+      clip-path: var(--hex-clip);
+      background: rgba(157, 195, 212, 0.28);
+      filter: drop-shadow(0 0 5px rgba(var(--cyan-rgb), 0.25));
+      transform: translateY(-4px);
+      transition: background 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
+    }
+
+    .cell__tag {
+      position: relative;
+      z-index: 1;
+      margin-top: -5px;
+      padding: 4px 6px;
+      border: 1px solid rgba(var(--accent-rgb), 0.26);
+      border-radius: 999px;
+      background: rgba(var(--accent-rgb), 0.08);
+      color: rgba(var(--accent-rgb), 0.94);
+      font-size: clamp(8px, 0.72vw, 10px);
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 9px rgba(var(--accent-rgb), 0.55);
+      transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+    }
+
+    .cell__coord {
+      position: absolute;
+      left: 50%;
+      bottom: 16%;
+      transform: translateX(-50%);
+      color: rgba(155, 190, 205, 0.28);
+      font-family: var(--font-mono);
+      font-size: clamp(6px, 0.62vw, 8px);
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+      transition: color 0.2s ease;
+    }
+
+    .cell__reveal-timer {
+      position: absolute;
+      left: 50%;
+      top: 5%;
+      z-index: 6;
+      padding: 2px 4px;
+      border: 1px solid rgba(var(--gold-rgb), 0.3);
+      border-radius: 999px;
+      background: rgba(22, 17, 9, 0.9);
+      color: rgba(var(--gold-rgb), 0.96);
+      font-family: var(--font-mono);
+      font-size: clamp(6px, 0.62vw, 8px);
+      line-height: 1.2;
+      letter-spacing: 0;
+      white-space: nowrap;
+      pointer-events: none;
+      transform: translateX(-50%);
+      text-shadow: 0 0 7px rgba(var(--gold-rgb), 0.38);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+    }
+
+    .cell__reveal-timer[hidden] {
+      display: none;
+    }
+
+    .cell.is-revealed-cell {
+      z-index: 3;
+    }
+
+    .cell__trail {
+      position: absolute;
+      inset: 7%;
+      z-index: 3;
+      border: 1px solid transparent;
+      border-radius: 50%;
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.92);
+      transition: opacity 0.28s ease, transform 0.28s ease;
+    }
+
+    .cell.is-trail-player .cell__trail {
+      opacity: 1;
+      transform: scale(1);
+      border-color: rgba(var(--cyan-rgb), 0.42);
+      box-shadow:
+        0 0 20px rgba(var(--cyan-rgb), 0.12),
+        inset 0 0 20px rgba(var(--cyan-rgb), 0.06);
+    }
+
+    .cell.is-trail-opponent .cell__trail {
+      opacity: 1;
+      transform: scale(1);
+      border-color: rgba(var(--pink-rgb), 0.42);
+      box-shadow:
+        0 0 20px rgba(var(--pink-rgb), 0.12),
+        inset 0 0 20px rgba(var(--pink-rgb), 0.06);
+    }
+
+    .cell:hover {
+      z-index: 5;
+      transform: scale(1.045);
+    }
+
+    .cell:hover .cell__aura {
+      opacity: 1;
+    }
+
+    .cell:hover .cell__hex {
+      background: linear-gradient(
+        155deg,
+        rgba(var(--accent-rgb), 0.96) 0%,
+        rgba(210, 240, 250, 0.3) 48%,
+        rgba(var(--accent-rgb), 0.72) 100%
+      );
+      filter:
+        drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.6))
+        drop-shadow(0 0 20px rgba(var(--accent-rgb), 0.24));
+    }
+
+    .cell:hover .cell__face {
+      background:
+        radial-gradient(circle at 50% 20%, rgba(var(--accent-rgb), 0.3), transparent 62%),
+        linear-gradient(160deg, rgba(22, 37, 49, 0.995), rgba(7, 13, 19, 0.995));
+    }
+
+    .cell:hover .cell__coord {
+      color: rgba(var(--accent-rgb), 0.9);
+    }
+
+    .cell:hover .cell__pip {
+      background: rgba(var(--accent-rgb), 0.85);
+      filter: drop-shadow(0 0 7px rgba(var(--accent-rgb), 0.6));
+    }
+
+    .cell:hover .cell__tag {
+      border-color: rgba(var(--accent-rgb), 0.48);
+      background: rgba(var(--accent-rgb), 0.15);
+    }
+
+    /* ---------- 棋子 ---------- */
+
+    .cell.is-own-piece {
+      cursor: pointer;
+    }
+
+    .cell.is-enemy-piece {
+      cursor: not-allowed;
+    }
+
+    .cell.is-move-target,
+    .cell.is-swap-target {
+      cursor: pointer;
+    }
+
+    .board.is-locked {
+      pointer-events: none;
+    }
+
+    .board.is-locked .cell,
+    .board.is-locked .cell.is-own-piece,
+    .board.is-locked .cell.is-enemy-piece,
+    .board.is-locked .cell.is-move-target,
+    .board.is-locked .cell.is-swap-target {
+      pointer-events: none;
+      cursor: default;
+    }
+
+    .board.is-choosing-target .cell,
+    .board.is-choosing-target .cell.is-own-piece,
+    .board.is-choosing-target .cell.is-enemy-piece,
+    .board.is-choosing-target .cell.is-move-target,
+    .board.is-choosing-target .cell.is-swap-target {
+      cursor: default;
+    }
+
+    .board.is-choosing-target .cell.is-combat-target {
+      cursor: crosshair;
+    }
+
+    .cell.is-occupied .cell__pip,
+    .cell.is-occupied .cell__tag,
+    .cell.is-move-target .cell__pip,
+    .cell.is-move-target .cell__tag {
+      opacity: 0;
+    }
+
+    .cell__piece-mount {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .piece {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 56%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      animation: piece-in 0.38s cubic-bezier(0.2, 0.85, 0.25, 1) backwards;
+      transition: transform 0.2s ease, filter 0.2s ease;
+    }
+
+    .piece--instant {
+      animation: none !important;
+      transition: none !important;
+    }
+
+    .piece__inner {
+      position: absolute;
+      inset: 12%;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .piece__glyph {
+      position: relative;
+      z-index: 1;
+      color: rgba(255, 255, 255, 0.96);
+      font-family: var(--font-sans);
+      font-size: clamp(11px, 1.05vw, 14px);
+      font-weight: 750;
+      line-height: 1;
+      text-shadow: 0 1px 5px rgba(0, 0, 0, 0.72);
+    }
+
+    .piece--faceup {
+      border: 1.5px solid rgba(255, 255, 255, 0.32);
+      background:
+        radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.6) 0%, transparent 24%),
+        radial-gradient(
+          circle at 50% 46%,
+          rgba(var(--piece-rgb), 1) 0%,
+          rgba(var(--piece-rgb), 0.68) 46%,
+          rgba(5, 10, 15, 0.98) 100%
+        );
+      box-shadow:
+        inset 0 2px 5px rgba(255, 255, 255, 0.3),
+        inset 0 -7px 13px rgba(0, 0, 0, 0.48),
+        0 7px 18px rgba(0, 0, 0, 0.55),
+        0 0 24px rgba(var(--piece-rgb), 0.28);
+    }
+
+    .piece--faceup .piece__inner {
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      background:
+        radial-gradient(circle at 40% 30%, rgba(255, 255, 255, 0.2), transparent 58%),
+        rgba(4, 9, 14, 0.3);
+      box-shadow:
+        inset 0 2px 8px rgba(0, 0, 0, 0.48),
+        0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .piece--hidden {
+      border: 2px solid rgba(140, 168, 180, 0.24);
+      background:
+        radial-gradient(circle at 50% 78%, rgba(255, 255, 255, 0.07), transparent 35%),
+        radial-gradient(circle at 50% 38%, #37454f 0%, #1a242d 48%, #070c11 100%);
+      box-shadow:
+        inset 0 3px 6px rgba(255, 255, 255, 0.09),
+        inset 0 -8px 15px rgba(0, 0, 0, 0.72),
+        0 7px 18px rgba(0, 0, 0, 0.58);
+    }
+
+    .piece--hidden::before {
+      content: "";
+      position: absolute;
+      inset: 8%;
+      border: 1px solid rgba(174, 200, 211, 0.16);
+      border-radius: 50%;
+      pointer-events: none;
+      box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.48),
+        0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .piece--hidden .piece__inner {
+      border: 1px solid rgba(178, 203, 214, 0.18);
+      background:
+        linear-gradient(45deg, transparent 45%, rgba(185, 211, 222, 0.16) 46% 54%, transparent 55%),
+        linear-gradient(-45deg, transparent 45%, rgba(185, 211, 222, 0.16) 46% 54%, transparent 55%),
+        radial-gradient(circle, rgba(7, 12, 17, 0.28), rgba(7, 12, 17, 0.48));
+      box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, 0.58),
+        0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .piece--hidden .piece__glyph {
+      color: rgba(210, 229, 238, 0.58);
+      font-size: clamp(13px, 1.15vw, 16px);
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+    }
+
+    .piece--side-player {
+      outline: 1.5px solid rgba(94, 194, 255, 0.88);
+      outline-offset: 1px;
+      filter:
+        drop-shadow(0 0 4px rgba(94, 194, 255, 0.95))
+        drop-shadow(0 0 13px rgba(94, 194, 255, 0.55));
+    }
+
+    .piece--side-opponent {
+      outline: 1.5px solid rgba(255, 82, 103, 0.92);
+      outline-offset: 1px;
+      filter:
+        drop-shadow(0 0 4px rgba(255, 82, 103, 0.95))
+        drop-shadow(0 0 13px rgba(255, 82, 103, 0.55));
+    }
+
+    .piece--enemy::before {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border: 1px solid rgba(var(--pink-rgb), 0.28);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .piece--revealed {
+      animation: reveal-flip 0.55s cubic-bezier(0.2, 0.8, 0.25, 1);
+    }
+
+    .cell:hover .piece {
+      transform: translateY(-1px) scale(1.025);
+    }
+
+    /* 选中己方棋子 */
+    .cell.is-selected {
+      z-index: 5;
+    }
+
+    .cell.is-selected .cell__aura {
+      opacity: 1;
+      background: radial-gradient(circle at 50% 52%, rgba(204, 244, 255, 0.34), transparent 68%);
+    }
+
+    .cell.is-selected .cell__hex {
+      background: linear-gradient(
+        155deg,
+        rgba(214, 247, 255, 0.95) 0%,
+        rgba(137, 195, 216, 0.25) 46%,
+        rgba(214, 247, 255, 0.62) 100%
+      );
+      filter:
+        drop-shadow(0 0 6px rgba(196, 240, 255, 0.55))
+        drop-shadow(0 0 20px rgba(var(--cyan-rgb), 0.2));
+    }
+
+    .cell.is-selected .cell__face {
+      background:
+        radial-gradient(circle at 50% 20%, rgba(214, 247, 255, 0.16), transparent 62%),
+        linear-gradient(160deg, rgba(22, 36, 47, 0.995), rgba(7, 13, 19, 0.995));
+    }
+
+    .cell.is-selected .piece::after {
+      content: "";
+      position: absolute;
+      inset: -5px;
+      border: 1px solid rgba(230, 250, 255, 0.72);
+      border-radius: 50%;
+      pointer-events: none;
+      box-shadow: 0 0 10px rgba(190, 240, 255, 0.32);
+      animation: selected-pulse 1.8s ease-in-out infinite;
+    }
+
+    /* 可移动相邻空格 */
+    .cell.is-move-target {
+      z-index: 4;
+    }
+
+    .cell.is-move-target .cell__aura {
+      opacity: 1;
+      background: radial-gradient(circle at 50% 52%, rgba(var(--cyan-rgb), 0.34), transparent 68%);
+    }
+
+    .cell.is-move-target .cell__hex {
+      background: linear-gradient(
+        155deg,
+        rgba(157, 242, 255, 0.95) 0%,
+        rgba(var(--cyan-rgb), 0.3) 48%,
+        rgba(157, 242, 255, 0.7) 100%
+      );
+      filter:
+        drop-shadow(0 0 6px rgba(var(--cyan-rgb), 0.5))
+        drop-shadow(0 0 18px rgba(var(--cyan-rgb), 0.2));
+    }
+
+    .cell.is-move-target .cell__face {
+      background:
+        radial-gradient(circle at 50% 45%, rgba(45, 142, 160, 0.22), transparent 66%),
+        linear-gradient(160deg, rgba(19, 34, 43, 0.995), rgba(7, 13, 19, 0.995));
+    }
+
+    .cell.is-move-target .cell__face::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(212, 250, 255, 0.96);
+      box-shadow:
+        0 0 8px rgba(var(--cyan-rgb), 0.9),
+        0 0 18px rgba(var(--cyan-rgb), 0.42);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: target-pulse 1.7s ease-in-out infinite;
+    }
+
+    .cell.is-move-target .cell__coord {
+      color: rgba(190, 246, 255, 0.75);
+    }
+
+    /* 可换位己方棋子 */
+    .cell.is-swap-target {
+      z-index: 4;
+    }
+
+    .cell.is-swap-target .cell__aura {
+      opacity: 1;
+      background: radial-gradient(circle at 50% 52%, rgba(var(--gold-rgb), 0.32), transparent 68%);
+    }
+
+    .cell.is-swap-target .cell__hex {
+      background: linear-gradient(
+        155deg,
+        rgba(var(--gold-rgb), 0.92) 0%,
+        rgba(var(--gold-rgb), 0.24) 48%,
+        rgba(var(--gold-rgb), 0.66) 100%
+      );
+      filter:
+        drop-shadow(0 0 6px rgba(var(--gold-rgb), 0.46))
+        drop-shadow(0 0 18px rgba(var(--gold-rgb), 0.18));
+    }
+
+    .cell.is-swap-target .cell__face {
+      background:
+        radial-gradient(circle at 50% 30%, rgba(117, 88, 35, 0.18), transparent 66%),
+        linear-gradient(160deg, rgba(35, 32, 23, 0.995), rgba(9, 13, 18, 0.995));
+    }
+
+    .cell.is-swap-target .cell__face::after {
+      content: "⇄";
+      position: absolute;
+      top: 14%;
+      right: 15%;
+      color: rgba(var(--gold-rgb), 0.96);
+      font-size: clamp(8px, 0.9vw, 11px);
+      font-weight: 700;
+      line-height: 1;
+      text-shadow: 0 0 8px rgba(var(--gold-rgb), 0.55);
+      pointer-events: none;
+    }
+
+    .cell.is-swap-target .piece::before {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border: 1px dashed rgba(var(--gold-rgb), 0.66);
+      border-radius: 50%;
+      pointer-events: none;
+      animation: swap-pulse 1.8s ease-in-out infinite;
+    }
+
+    /* 多目标交战时由玩家选择 */
+    .cell.is-combat-target {
+      z-index: 6;
+      cursor: crosshair;
+    }
+
+    .cell.is-combat-target .cell__aura {
+      opacity: 1;
+      background: radial-gradient(circle at 50% 52%, rgba(var(--combat-rgb), 0.42), transparent 68%);
+    }
+
+    .cell.is-combat-target .cell__hex {
+      background: linear-gradient(
+        155deg,
+        rgba(var(--combat-rgb), 0.96) 0%,
+        rgba(var(--combat-rgb), 0.3) 48%,
+        rgba(var(--combat-rgb), 0.7) 100%
+      );
+      filter:
+        drop-shadow(0 0 7px rgba(var(--combat-rgb), 0.55))
+        drop-shadow(0 0 20px rgba(var(--combat-rgb), 0.2));
+    }
+
+    .cell.is-combat-target .cell__face {
+      background:
+        radial-gradient(circle at 50% 42%, rgba(129, 70, 28, 0.24), transparent 66%),
+        linear-gradient(160deg, rgba(42, 28, 18, 0.995), rgba(11, 13, 17, 0.995));
+    }
+
+    .cell.is-combat-target .cell__coord {
+      color: rgba(var(--combat-rgb), 0.86);
+    }
+
+    .cell.is-combat-target .piece::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+      border: 1px solid rgba(var(--combat-rgb), 0.84);
+      border-radius: 50%;
+      pointer-events: none;
+      box-shadow: 0 0 12px rgba(var(--combat-rgb), 0.32);
+      animation: combat-pulse 1.25s ease-in-out infinite;
+    }
+
+    /* ---------- 页脚信息 ---------- */
+
+    .board-card__footer {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px clamp(14px, 3vw, 28px);
+      padding: 14px 24px;
+      border-top: 1px solid var(--line);
+      background: rgba(4, 8, 13, 0.35);
+    }
+
+    .meta {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+    }
+
+    .meta__key {
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.15em;
+    }
+
+    .meta__val {
+      color: #b7cad4;
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .board-status {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex: 1 1 260px;
+      min-height: 20px;
+      margin-left: auto;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1.5;
+      letter-spacing: 0.04em;
+      text-align: right;
+      transition: color 0.2s ease;
+    }
+
+    .board-status::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      flex: none;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 9px rgba(var(--cyan-rgb), 0.8);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .board-status[data-tone="active"] {
+      color: rgba(190, 245, 255, 0.92);
+    }
+
+    .board-status[data-tone="active"]::before {
+      background: #d7fbff;
+      box-shadow: 0 0 11px rgba(var(--cyan-rgb), 0.95);
+    }
+
+    .board-status[data-tone="combat"] {
+      color: rgba(var(--combat-rgb), 0.95);
+    }
+
+    .board-status[data-tone="combat"]::before {
+      background: rgb(var(--combat-rgb));
+      box-shadow: 0 0 10px rgba(var(--combat-rgb), 0.85);
+    }
+
+    .board-status[data-tone="warn"] {
+      color: rgba(var(--pink-rgb), 0.82);
+    }
+
+    .board-status[data-tone="warn"]::before {
+      background: rgba(var(--pink-rgb), 0.9);
+      box-shadow: 0 0 9px rgba(var(--pink-rgb), 0.7);
+    }
+
+    /* ---------- 侧栏 ---------- */
+
+    .side {
+      grid-area: side;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: card-in 0.9s 0.08s cubic-bezier(0.16, 0.8, 0.2, 1) both;
+    }
+
+    .side-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      background: linear-gradient(160deg, rgba(16, 24, 34, 0.72), rgba(7, 12, 18, 0.86));
+      box-shadow:
+        0 20px 55px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(12px);
+    }
+
+    .side-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 18px;
+      right: 18px;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.22), transparent);
+    }
+
+    .side-card h3 {
+      margin: 5px 0 15px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .zone-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .zone-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border: 1px solid rgba(135, 180, 200, 0.09);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.018);
+    }
+
+    .zone-swatch {
+      width: 13px;
+      height: 15px;
+      flex: none;
+      clip-path: var(--hex-clip);
+    }
+
+    .zone-swatch--top {
+      background: rgba(255, 82, 103, 0.9);
+      filter: drop-shadow(0 0 6px rgba(255, 82, 103, 0.55));
+    }
+
+    .zone-swatch--bottom {
+      background: rgba(94, 194, 255, 0.9);
+      filter: drop-shadow(0 0 6px rgba(94, 194, 255, 0.55));
+    }
+
+    .zone-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .zone-info > span {
+      color: #cfdee6;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    .zone-info small {
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      line-height: 1.35;
+      letter-spacing: 0.03em;
+    }
+
+    .zone-num {
+      margin-left: auto;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .specs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .spec {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 10px;
+      border: 1px solid rgba(135, 180, 200, 0.07);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .spec > span {
+      color: var(--muted-2);
+      font-size: 9px;
+      letter-spacing: 0.08em;
+    }
+
+    .spec > strong {
+      color: #dcecf2;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .coordinate-key {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px;
+      padding: 10px 11px;
+      border: 1px dashed rgba(135, 180, 200, 0.16);
+      border-radius: 10px;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.05em;
+    }
+
+    .coordinate-key code {
+      color: rgba(var(--cyan-rgb), 0.82);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+
+    .direction-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .direction-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 7px 9px;
+      border: 1px solid rgba(135, 180, 200, 0.08);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--muted-2);
+      font-size: 9px;
+      letter-spacing: 0.04em;
+    }
+
+    .direction-chip code {
+      color: rgba(var(--cyan-rgb), 0.74);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      white-space: nowrap;
+    }
+
+    .side-divider {
+      height: 1px;
+      margin: 12px 0 10px;
+      background: linear-gradient(90deg, rgba(135, 180, 200, 0.12), transparent);
+    }
+
+    .combat-ladder {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .combat-pair {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 7px;
+      border: 1px solid rgba(135, 180, 200, 0.08);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.018);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .combat-pair b {
+      color: var(--muted-2);
+      font-weight: 400;
+    }
+
+    .combat-dot {
+      width: 6px;
+      height: 6px;
+      flex: none;
+      border-radius: 50%;
+      background: rgb(var(--dot-rgb));
+      box-shadow: 0 0 5px rgba(var(--dot-rgb), 0.55);
+    }
+
+    .side-card__hint {
+      margin: 10px 0 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      line-height: 1.6;
+      letter-spacing: 0.03em;
+    }
+
+    .side-note {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0;
+      padding: 2px 3px 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      line-height: 1.6;
+      letter-spacing: 0.06em;
+    }
+
+    .side-note::before {
+      content: "";
+      width: 14px;
+      height: 1px;
+      flex: none;
+      background: rgba(var(--cyan-rgb), 0.3);
+    }
+
+    /* ---------- 对局记录 ---------- */
+
+    .log-card {
+      grid-area: log;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(160deg, rgba(17, 26, 37, 0.84), rgba(6, 11, 17, 0.94));
+      box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.42),
+        inset 0 1px 0 rgba(255, 255, 255, 0.025);
+      backdrop-filter: blur(14px);
+      animation: card-in 0.9s 0.12s cubic-bezier(0.16, 0.8, 0.2, 1) both;
+    }
+
+    .log-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 8%;
+      right: 8%;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(var(--gold-rgb), 0.32), rgba(var(--cyan-rgb), 0.25), transparent);
+    }
+
+    .log-card__head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px 13px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(4, 8, 13, 0.22);
+    }
+
+    .log-card__head h3 {
+      margin: 4px 0 0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: 0.03em;
+    }
+
+    .log-count {
+      flex: none;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .log-scroll {
+      height: clamp(220px, 27vh, 300px);
+      overflow-y: auto;
+      padding: 10px 18px 16px;
+      scroll-behavior: smooth;
+      scrollbar-color: rgba(var(--cyan-rgb), 0.32) rgba(255, 255, 255, 0.02);
+      scrollbar-width: thin;
+    }
+
+    .log-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .log-scroll::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .log-scroll::-webkit-scrollbar-thumb {
+      border-radius: 999px;
+      background: rgba(var(--cyan-rgb), 0.28);
+    }
+
+    .log-empty {
+      margin: 0;
+      padding: 30px 12px;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .log-round {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0 8px;
+      color: rgba(var(--cyan-rgb), 0.62);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    .log-round::before,
+    .log-round::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: linear-gradient(90deg, transparent, rgba(var(--cyan-rgb), 0.18));
+    }
+
+    .log-round::after {
+      background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.18), transparent);
+    }
+
+    .log-entry {
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      border-left: 2px solid transparent;
+      border-radius: 0 8px 8px 0;
+      padding: 6px 10px 6px 11px;
+      color: #b5cad5;
+      font-size: 11.5px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .log-entry + .log-entry {
+      margin-top: 3px;
+    }
+
+    .log-entry::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      flex: none;
+      margin-top: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.36;
+    }
+
+    .log-entry--battle {
+      border-left-color: rgba(var(--pink-rgb), 0.55);
+      background: linear-gradient(90deg, rgba(var(--pink-rgb), 0.09), transparent 82%);
+      font-weight: 600;
+    }
+
+    .log-entry--danger {
+      color: #ffb5c5;
+    }
+
+    .log-entry--good {
+      border-left-color: rgba(var(--cyan-rgb), 0.55);
+      background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.08), transparent 82%);
+      color: #a8edff;
+    }
+
+    .log-entry--tie {
+      border-left-color: rgba(var(--gold-rgb), 0.6);
+      background: linear-gradient(90deg, rgba(var(--gold-rgb), 0.09), transparent 82%);
+      color: #ffe1a5;
+    }
+
+    .log-entry--expose {
+      border-left-color: rgba(var(--gold-rgb), 0.28);
+      color: rgba(var(--gold-rgb), 0.8);
+    }
+
+    .log-entry--peek {
+      color: #b9d8e5;
+    }
+
+    .log-entry--declare {
+      color: #ffbcc7;
+      font-weight: 600;
+    }
+
+    .log-entry--system {
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+    }
+
+    .log-entry--result {
+      border-left-color: rgba(var(--cyan-rgb), 0.3);
+      color: #d5eaf2;
+      font-weight: 600;
+    }
+
+    .log-entry--latest {
+      animation: log-in 0.28s cubic-bezier(0.16, 0.8, 0.25, 1);
+    }
+
+    @keyframes log-in {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ---------- 战斗弹窗 ---------- */
+
+    .battle-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(5, 11, 18, 0.26), rgba(2, 5, 8, 0.62));
+      -webkit-backdrop-filter: blur(2px);
+      backdrop-filter: blur(2px);
+    }
+
+    .battle-layer[hidden] {
+      display: none;
+    }
+
+    .battle-toast {
+      position: relative;
+      width: min(92vw, 390px);
+      overflow: hidden;
+      padding: 22px 22px 20px;
+      border: 1px solid rgba(var(--cyan-rgb), 0.2);
+      border-radius: 20px;
+      background:
+        linear-gradient(150deg, rgba(20, 32, 43, 0.98), rgba(6, 11, 17, 0.99));
+      box-shadow:
+        0 30px 90px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.025) inset,
+        0 0 50px rgba(var(--cyan-rgb), 0.06);
+      animation: battle-in 0.3s cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+
+    .battle-toast::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(var(--cyan-rgb), 0.7),
+        rgba(var(--violet-rgb), 0.4),
+        transparent
+      );
+    }
+
+    .battle-toast::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(var(--cyan-rgb), 0.8), rgba(var(--violet-rgb), 0.5));
+      transform-origin: left center;
+      animation: battle-progress 2.8s linear forwards;
+    }
+
+    .battle-toast__eyebrow {
+      margin: 0;
+      color: rgba(var(--cyan-rgb), 0.58);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      line-height: 1.2;
+      letter-spacing: 0.22em;
+    }
+
+    .battle-toast__title {
+      margin: 7px 0 14px;
+      color: #eefaff;
+      font-size: clamp(17px, 2vw, 20px);
+      font-weight: 650;
+      line-height: 1.35;
+      letter-spacing: 0.02em;
+    }
+
+    .battle-toast__lines {
+      display: grid;
+      gap: 7px;
+    }
+
+    .battle-line {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      padding: 8px 9px;
+      border: 1px solid rgba(135, 180, 200, 0.08);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.024);
+    }
+
+    .battle-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #cddde5;
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    .battle-chip__dot {
+      width: 7px;
+      height: 7px;
+      flex: none;
+      border-radius: 50%;
+      background: rgb(var(--chip-rgb));
+      box-shadow: 0 0 7px rgba(var(--chip-rgb), 0.55);
+    }
+
+    .battle-line__vs {
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 7.5px;
+      letter-spacing: 0.08em;
+    }
+
+    .battle-line__outcome {
+      margin-left: auto;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .battle-line__outcome--win {
+      border: 1px solid rgba(var(--cyan-rgb), 0.26);
+      background: rgba(var(--cyan-rgb), 0.08);
+      color: rgba(var(--cyan-rgb), 0.92);
+    }
+
+    .battle-line__outcome--lose {
+      border: 1px solid rgba(var(--pink-rgb), 0.26);
+      background: rgba(var(--pink-rgb), 0.08);
+      color: rgba(var(--pink-rgb), 0.92);
+    }
+
+    .battle-line__outcome--tie {
+      border: 1px solid rgba(var(--gold-rgb), 0.26);
+      background: rgba(var(--gold-rgb), 0.08);
+      color: rgba(var(--gold-rgb), 0.92);
+    }
+
+    .battle-toast__hint {
+      margin: 13px 0 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      line-height: 1.5;
+      letter-spacing: 0.05em;
+    }
+
+    /* ---------- 看子确认 ---------- */
+
+    .peek-confirm-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: radial-gradient(circle at 50% 45%, rgba(4, 10, 16, 0.3), rgba(2, 5, 8, 0.72));
+      -webkit-backdrop-filter: blur(4px);
+      backdrop-filter: blur(4px);
+    }
+
+    .peek-confirm-layer[hidden] {
+      display: none;
+    }
+
+    .peek-confirm {
+      width: min(92vw, 388px);
+      padding: 24px;
+      border: 1px solid rgba(var(--gold-rgb), 0.24);
+      border-radius: 20px;
+      background: linear-gradient(150deg, rgba(24, 27, 29, 0.99), rgba(6, 11, 17, 0.995));
+      box-shadow:
+        0 30px 90px rgba(0, 0, 0, 0.62),
+        0 0 45px rgba(var(--gold-rgb), 0.07),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+      animation: peek-in 0.25s cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+
+    .peek-confirm__eyebrow {
+      margin: 0;
+      color: rgba(var(--gold-rgb), 0.62);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      letter-spacing: 0.22em;
+    }
+
+    .peek-confirm__title {
+      margin: 7px 0 12px;
+      color: #f4fbfe;
+      font-size: 22px;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+
+    .peek-confirm__detail {
+      margin: 0;
+      color: #b9ccd6;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .peek-confirm__warning {
+      margin: 10px 0 0;
+      padding: 9px 11px;
+      border: 1px solid rgba(var(--gold-rgb), 0.13);
+      border-radius: 9px;
+      background: rgba(var(--gold-rgb), 0.05);
+      color: rgba(var(--gold-rgb), 0.72);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      line-height: 1.5;
+    }
+
+    .peek-confirm__actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 9px;
+      margin-top: 18px;
+    }
+
+    .peek-confirm__cancel,
+    .peek-confirm__confirm {
+      padding: 9px 15px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1.2;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+
+    .peek-confirm__cancel {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+      color: var(--muted);
+    }
+
+    .peek-confirm__cancel:hover {
+      border-color: var(--line-strong);
+      background: rgba(255, 255, 255, 0.06);
+      color: #dceaf0;
+    }
+
+    .peek-confirm__confirm {
+      border: 1px solid rgba(var(--gold-rgb), 0.35);
+      background: rgba(var(--gold-rgb), 0.12);
+      color: rgba(var(--gold-rgb), 0.96);
+    }
+
+    .peek-confirm__confirm:hover {
+      background: rgba(var(--gold-rgb), 0.2);
+      border-color: rgba(var(--gold-rgb), 0.55);
+    }
+
+    /* ---------- 看子结果 ---------- */
+
+    .peek-layer {
+      position: fixed;
+      top: clamp(14px, 2.5vh, 28px);
+      left: 50%;
+      z-index: 60;
+      width: min(92vw, 370px);
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+
+    .peek-layer[hidden] {
+      display: none;
+    }
+
+    .peek-toast {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      overflow: hidden;
+      padding: 13px 16px;
+      border: 1px solid rgba(var(--gold-rgb), 0.28);
+      border-radius: 15px;
+      background: linear-gradient(150deg, rgba(24, 25, 22, 0.98), rgba(6, 11, 17, 0.99));
+      box-shadow:
+        0 18px 50px rgba(0, 0, 0, 0.5),
+        0 0 32px rgba(var(--gold-rgb), 0.08);
+      animation: peek-in 0.25s cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+
+    .peek-toast::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(var(--gold-rgb), 0.8), rgba(var(--combat-rgb), 0.55));
+      transform-origin: left center;
+      animation: peek-progress 2s linear forwards;
+    }
+
+    .peek-toast__token {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex: none;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.5) 0%, transparent 24%),
+        radial-gradient(circle at 50% 46%, rgba(var(--peek-rgb), 0.96) 0%, rgba(var(--peek-rgb), 0.5) 66%, rgba(7, 12, 18, 0.98) 100%);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 0 18px rgba(var(--peek-rgb), 0.24);
+    }
+
+    .peek-toast__copy {
+      min-width: 0;
+    }
+
+    .peek-toast__eyebrow {
+      margin: 0;
+      color: rgba(var(--gold-rgb), 0.58);
+      font-family: var(--font-mono);
+      font-size: 7.5px;
+      line-height: 1.2;
+      letter-spacing: 0.18em;
+    }
+
+    .peek-toast__title {
+      margin: 4px 0 0;
+      color: #f2fafd;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    .peek-toast__detail {
+      margin: 3px 0 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      line-height: 1.3;
+    }
+
+    /* ---------- 胜负结算 ---------- */
+
+    .gameover-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(8, 20, 30, 0.5), rgba(2, 5, 8, 0.86));
+      -webkit-backdrop-filter: blur(7px);
+      backdrop-filter: blur(7px);
+    }
+
+    .gameover-layer[hidden] {
+      display: none;
+    }
+
+    .gameover-card {
+      position: relative;
+      width: min(92vw, 540px);
+      overflow: hidden;
+      padding: clamp(28px, 5vw, 46px);
+      border: 1px solid var(--line-strong);
+      border-radius: 28px;
+      background: linear-gradient(150deg, rgba(19, 29, 40, 0.99), rgba(5, 9, 14, 0.995));
+      text-align: center;
+      box-shadow:
+        0 40px 120px rgba(0, 0, 0, 0.72),
+        0 0 0 1px rgba(255, 255, 255, 0.025) inset;
+      animation: gameover-in 0.45s cubic-bezier(0.16, 0.8, 0.25, 1) both;
+    }
+
+    .gameover-card::before {
+      content: "";
+      position: absolute;
+      top: -160px;
+      left: 50%;
+      width: 360px;
+      height: 320px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(var(--cyan-rgb), 0.14), transparent 68%);
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .gameover-layer[data-result="lose"] .gameover-card::before {
+      background: radial-gradient(circle, rgba(var(--pink-rgb), 0.14), transparent 68%);
+    }
+
+    .gameover-card__eyebrow {
+      position: relative;
+      margin: 0;
+      color: var(--muted-2);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      letter-spacing: 0.24em;
+    }
+
+    .gameover-card__title {
+      position: relative;
+      margin: 12px 0 12px;
+      color: rgba(var(--cyan-rgb), 0.98);
+      font-size: clamp(46px, 9vw, 74px);
+      font-weight: 750;
+      line-height: 1.05;
+      letter-spacing: 0.03em;
+      text-shadow: 0 0 32px rgba(var(--cyan-rgb), 0.24);
+    }
+
+    .gameover-layer[data-result="lose"] .gameover-card__title {
+      color: rgba(var(--pink-rgb), 0.98);
+      text-shadow: 0 0 32px rgba(var(--pink-rgb), 0.22);
+    }
+
+    .gameover-card__detail {
+      position: relative;
+      margin: 0;
+      color: #c6d9e2;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .gameover-card__score {
+      position: relative;
+      display: inline-flex;
+      gap: 14px;
+      margin-top: 20px;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.025);
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 0.06em;
+    }
+
+    .gameover-card__button {
+      position: relative;
+      display: block;
+      width: 100%;
+      margin-top: 26px;
+      padding: 13px 20px;
+      border: 1px solid rgba(var(--cyan-rgb), 0.35);
+      border-radius: 13px;
+      background: linear-gradient(180deg, rgba(var(--cyan-rgb), 0.14), rgba(var(--cyan-rgb), 0.06));
+      color: rgba(222, 250, 255, 0.98);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .gameover-layer[data-result="lose"] .gameover-card__button {
+      border-color: rgba(var(--pink-rgb), 0.35);
+      background: linear-gradient(180deg, rgba(var(--pink-rgb), 0.14), rgba(var(--pink-rgb), 0.06));
+      color: rgba(255, 233, 246, 0.98);
+    }
+
+    .gameover-card__button:hover {
+      border-color: rgba(var(--cyan-rgb), 0.6);
+      background: linear-gradient(180deg, rgba(var(--cyan-rgb), 0.22), rgba(var(--cyan-rgb), 0.1));
+      transform: translateY(-1px);
+    }
+
+    .gameover-layer[data-result="lose"] .gameover-card__button:hover {
+      border-color: rgba(var(--pink-rgb), 0.6);
+      background: linear-gradient(180deg, rgba(var(--pink-rgb), 0.22), rgba(var(--pink-rgb), 0.1));
+    }
+
+    .gameover-layer[data-result="draw"] .gameover-card::before {
+      background: radial-gradient(circle, rgba(var(--gold-rgb), 0.14), transparent 68%);
+    }
+
+    .gameover-layer[data-result="draw"] .gameover-card__title {
+      color: rgba(var(--gold-rgb), 0.98);
+      text-shadow: 0 0 32px rgba(var(--gold-rgb), 0.22);
+    }
+
+    .gameover-layer[data-result="draw"] .gameover-card__button {
+      border-color: rgba(var(--gold-rgb), 0.35);
+      background: linear-gradient(180deg, rgba(var(--gold-rgb), 0.14), rgba(var(--gold-rgb), 0.06));
+      color: rgba(255, 246, 225, 0.98);
+    }
+
+    .gameover-layer[data-result="draw"] .gameover-card__button:hover {
+      border-color: rgba(var(--gold-rgb), 0.6);
+      background: linear-gradient(180deg, rgba(var(--gold-rgb), 0.22), rgba(var(--gold-rgb), 0.1));
+    }
+
+    /* ---------- 新动效 ---------- */
+
+    @keyframes enemy-thinking {
+      0%,
+      100% {
+        opacity: 1;
+        box-shadow: 0 0 10px rgba(var(--pink-rgb), 0.55);
+      }
+      50% {
+        opacity: 0.38;
+        box-shadow: 0 0 4px rgba(var(--pink-rgb), 0.25);
+      }
+    }
+
+    @keyframes peek-in {
+      from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes peek-progress {
+      from {
+        transform: scaleX(1);
+      }
+      to {
+        transform: scaleX(0);
+      }
+    }
+
+    @keyframes gameover-in {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.94);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes cell-in {
+      from {
+        opacity: 0;
+        transform: scale(0.72);
+      }
+      60% {
+        opacity: 1;
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes piece-in {
+      from {
+        opacity: 0;
+        transform: scale(0.55);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes reveal-flip {
+      0% {
+        opacity: 0.4;
+        transform: rotateY(82deg) scale(0.82);
+      }
+      65% {
+        opacity: 1;
+        transform: rotateY(-7deg) scale(1.03);
+      }
+      100% {
+        opacity: 1;
+        transform: rotateY(0) scale(1);
+      }
+    }
+
+    @keyframes card-in {
+      from {
+        opacity: 0;
+        transform: translateY(16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes status-pulse {
+      0%,
+      100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(var(--cyan-rgb), 0.32), 0 0 10px rgba(var(--cyan-rgb), 0.7);
+      }
+      50% {
+        opacity: 0.55;
+        box-shadow: 0 0 0 5px rgba(var(--cyan-rgb), 0), 0 0 6px rgba(var(--cyan-rgb), 0.4);
+      }
+    }
+
+    @keyframes selected-pulse {
+      0%,
+      100% {
+        opacity: 0.5;
+        transform: scale(0.94);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.03);
+      }
+    }
+
+    @keyframes swap-pulse {
+      0%,
+      100% {
+        opacity: 0.45;
+        transform: scale(0.96);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.02);
+      }
+    }
+
+    @keyframes combat-pulse {
+      0%,
+      100% {
+        opacity: 0.55;
+        transform: scale(0.94);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.05);
+      }
+    }
+
+    @keyframes target-pulse {
+      0%,
+      100% {
+        opacity: 0.58;
+        box-shadow: 0 0 6px rgba(var(--cyan-rgb), 0.7);
+      }
+      50% {
+        opacity: 1;
+        box-shadow: 0 0 12px rgba(var(--cyan-rgb), 1), 0 0 22px rgba(var(--cyan-rgb), 0.45);
+      }
+    }
+
+    @keyframes battle-in {
+      from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes battle-progress {
+      from {
+        transform: scaleX(1);
+      }
+      to {
+        transform: scaleX(0);
+      }
+    }
+
+    /* ---------- 可读性强化 ---------- */
+
+    body {
+      font-size: 16px;
+    }
+
+    .status {
+      font-size: 10px;
+    }
+
+    .eyebrow {
+      font-size: 9.5px;
+    }
+
+    .heading h2 span {
+      font-size: 10px;
+    }
+
+    .legend {
+      font-size: 10px;
+    }
+
+    .turn-indicator__label,
+    .turn-indicator__side {
+      font-size: 9.5px;
+    }
+
+    .turn-indicator__name {
+      font-size: 19px;
+    }
+
+    .turn-note {
+      font-size: 10px;
+    }
+
+    .round-counter__label,
+    .round-counter__max {
+      font-size: 9px;
+    }
+
+    .round-counter__value {
+      font-size: 18px;
+    }
+
+    .round-counter__remain {
+      font-size: 8.5px;
+    }
+
+    .meta__key {
+      font-size: 9px;
+    }
+
+    .meta__val {
+      font-size: 11px;
+    }
+
+    .board-status {
+      font-size: 10px;
+    }
+
+    .cell__coord {
+      color: rgba(170, 205, 220, 0.42);
+      font-size: clamp(8px, 0.72vw, 10px);
+    }
+
+    .cell__tag {
+      font-size: clamp(9px, 0.8vw, 11px);
+    }
+
+    .cell__reveal-timer {
+      font-size: clamp(7px, 0.68vw, 9px);
+    }
+
+    .zone-info > span {
+      font-size: 12px;
+    }
+
+    .zone-info small {
+      font-size: 9px;
+    }
+
+    .spec > span {
+      font-size: 10px;
+    }
+
+    .coordinate-key {
+      font-size: 9px;
+    }
+
+    .coordinate-key code {
+      font-size: 10.5px;
+    }
+
+    .direction-chip {
+      font-size: 10px;
+    }
+
+    .direction-chip code {
+      font-size: 9.5px;
+    }
+
+    .combat-pair {
+      font-size: 9px;
+    }
+
+    .side-card__hint {
+      font-size: 9px;
+    }
+
+    .side-note {
+      font-size: 9.5px;
+    }
+
+    /* ---------- 响应式 ---------- */
+
+    @media (max-width: 920px) {
+      :root {
+        --hex-w: clamp(48px, 10.5vw, 84px);
+      }
+
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "board"
+          "log"
+          "side";
+      }
+
+      .side {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .side-note {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .turn-bar {
+        gap: 8px 12px;
+        padding: 12px 14px;
+      }
+
+      .turn-indicator {
+        flex: 1 1 100%;
+      }
+
+      .turn-note {
+        flex-basis: 100%;
+      }
+
+      .war-prompt {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 9px;
+      }
+
+      .war-prompt__actions {
+        width: 100%;
+        margin-left: 0;
+      }
+
+      .war-prompt__skip,
+      .war-prompt__declare {
+        flex: 1;
+      }
+
+      .round-counter {
+        width: 100%;
+        justify-content: center;
+        margin-left: 0;
+      }
+
+      .board-card {
+        border-radius: 20px;
+      }
+
+      .board-card__header {
+        padding: 18px 18px 0;
+      }
+
+      .board-field {
+        padding-top: 24px;
+        padding-bottom: 26px;
+      }
+
+      .legend {
+        width: 100%;
+        gap: 12px;
+      }
+
+      .board-card__footer {
+        gap: 10px 16px;
+        padding: 12px 18px;
+      }
+
+      .board-status {
+        flex-basis: 100%;
+        justify-content: flex-start;
+        margin-left: 0;
+        text-align: left;
+      }
+
+      .side {
+        grid-template-columns: 1fr;
+      }
+
+      .side-note {
+        grid-column: auto;
+      }
+
+      .battle-toast {
+        padding: 20px 18px 18px;
+      }
+
+      .log-card__head {
+        padding: 16px 18px 12px;
+      }
+
+      .log-scroll {
+        height: 220px;
+        padding: 8px 14px 14px;
+      }
+
+      .peek-confirm {
+        padding: 20px;
+      }
+
+      .gameover-card {
+        padding: 30px 20px;
+        border-radius: 22px;
+      }
+
+      .gameover-card__title {
+        font-size: clamp(42px, 13vw, 60px);
+      }
+    }
+
+    @media (max-width: 420px) {
+      .brand__mark {
+        width: 31px;
+        height: 34px;
+      }
+
+      .brand__mark::after {
+        inset: 11px 10px;
+      }
+
+      .brand__eyebrow {
+        font-size: 8px;
+        letter-spacing: 0.2em;
+      }
+
+      .status {
+        gap: 7px;
+        padding: 7px 9px;
+        font-size: 8px;
+      }
+
+      .status__divider,
+      .status__version {
+        display: none;
+      }
+
+      .heading h2 span {
+        display: block;
+        margin: 4px 0 0;
+      }
+
+      .turn-indicator__side {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-delay: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="hero">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <div class="brand__text">
+          <p class="brand__eyebrow">HEX DARK CHESS</p>
+          <h1>六边暗棋</h1>
+        </div>
+      </div>
+      <div class="status" role="status">
+        <span class="status__dot" aria-hidden="true"></span>
+        <span class="status__text">阵营对局</span>
+        <span class="status__divider" aria-hidden="true"></span>
+        <span class="status__version">v0.9</span>
+      </div>
+    </header>
+
+    <section class="turn-bar" id="turn-bar" data-turn="player" data-phase="normal" aria-label="回合状态">
+      <div class="turn-indicator" aria-live="polite" aria-atomic="true">
+        <span class="turn-indicator__orb" aria-hidden="true"></span>
+        <div class="turn-indicator__copy">
+          <span class="turn-indicator__label">当前回合：</span>
+          <strong class="turn-indicator__name" id="turn-name">你</strong>
+        </div>
+        <span class="turn-indicator__side" id="turn-side">下方 · 玩家操作</span>
+      </div>
+      <p class="turn-note" id="turn-note">选择己方棋子移动；选中后再点任意另一枚己方棋子可换位；点击敌方背面棋子可使用看子。</p>
+      <div class="round-counter" id="round-counter" data-tense="normal" aria-label="当前回合 1，共 40 回合">
+        <span class="round-counter__label">回合</span>
+        <strong class="round-counter__value" id="round-value">01</strong>
+        <span class="round-counter__max">/ <span id="round-max">40</span></span>
+        <span class="round-counter__remain" id="round-remain">剩 39</span>
+      </div>
+
+      <div class="war-prompt" id="war-prompt" hidden role="group" aria-labelledby="war-title">
+        <div class="war-prompt__copy">
+          <p class="war-prompt__title" id="war-title">换位后与敌方相邻，是否宣战？</p>
+          <p class="war-prompt__detail">宣战会立即结算比大小；跳过则安全结束本回合。也可直接点击高亮的敌方棋子宣战。</p>
+        </div>
+        <div class="war-prompt__actions">
+          <button class="war-prompt__skip" id="skip-war-button" type="button">跳过</button>
+          <button class="war-prompt__declare" id="declare-war-button" type="button">宣战</button>
+        </div>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="board-card" aria-labelledby="board-title">
+        <div class="board-card__header">
+          <div class="heading">
+            <p class="eyebrow">HONEYCOMB ARENA</p>
+            <h2 id="board-title">棋盘 <span>RADIUS 2 / TURN-BASED</span></h2>
+          </div>
+          <div class="legend" aria-label="阵营光晕图例">
+            <span class="legend__item">
+              <i class="legend__swatch legend__swatch--enemy" aria-hidden="true"></i>敌方 · 红光
+            </span>
+            <span class="legend__item">
+              <i class="legend__swatch legend__swatch--player" aria-hidden="true"></i>己方 · 蓝光
+            </span>
+          </div>
+        </div>
+
+        <div class="board-field">
+          <div
+            class="board"
+            id="board"
+            role="grid"
+            aria-label="六边暗棋棋盘，共 19 个格子，已部署 6 枚棋子"
+            aria-rowcount="5"
+            aria-colcount="5"
+          ></div>
+        </div>
+
+        <div class="board-card__footer">
+          <div class="meta">
+            <span class="meta__key">CELLS</span>
+            <span class="meta__val">19</span>
+          </div>
+          <div class="meta">
+            <span class="meta__key">PIECES</span>
+            <span class="meta__val" id="piece-count">06</span>
+          </div>
+          <div class="meta">
+            <span class="meta__key">PLAYER</span>
+            <span class="meta__val">下方</span>
+          </div>
+          <div class="board-status" id="board-status" role="status" aria-live="polite" data-tone="hint">
+            轮到你 · 移动、换位，或点击敌方背面使用看子
+          </div>
+        </div>
+      </section>
+
+      <aside class="side" aria-label="棋盘信息">
+        <section class="side-card">
+          <p class="eyebrow">DEPLOYMENT</p>
+          <h3>起始部署</h3>
+          <div class="zone-list">
+            <div class="zone-row">
+              <span class="zone-swatch zone-swatch--top" aria-hidden="true"></span>
+              <span class="zone-info">
+                <span>上方 · 敌方</span>
+                <small>r = -2 · 3 枚 · 背面朝上</small>
+              </span>
+              <span class="zone-num">×3</span>
+            </div>
+            <div class="zone-row">
+              <span class="zone-swatch zone-swatch--bottom" aria-hidden="true"></span>
+              <span class="zone-info">
+                <span>下方 · 己方</span>
+                <small>r = +2 · 3 枚 · 颜色可见</small>
+              </span>
+              <span class="zone-num">×3</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <p class="eyebrow">GEOMETRY</p>
+          <h3>棋盘结构</h3>
+          <div class="specs">
+            <div class="spec"><span>边长</span><strong>3</strong></div>
+            <div class="spec"><span>蜂窝半径</span><strong>2</strong></div>
+            <div class="spec"><span>总格数</span><strong>19</strong></div>
+            <div class="spec"><span>起始格</span><strong>06</strong></div>
+          </div>
+          <div class="coordinate-key">
+            <span>AXIAL CONSTRAINT</span>
+            <code>s = -q - r</code>
+          </div>
+        </section>
+
+        <section class="side-card">
+          <p class="eyebrow">ADJACENCY &amp; COMBAT</p>
+          <h3>相邻与克制</h3>
+          <div class="direction-grid" aria-label="六个轴向偏移量">
+            <span class="direction-chip"><span>东</span><code>+1, 0</code></span>
+            <span class="direction-chip"><span>东北</span><code>+1, -1</code></span>
+            <span class="direction-chip"><span>西北</span><code>0, -1</code></span>
+            <span class="direction-chip"><span>西</span><code>-1, 0</code></span>
+            <span class="direction-chip"><span>西南</span><code>-1, +1</code></span>
+            <span class="direction-chip"><span>东南</span><code>0, +1</code></span>
+          </div>
+          <div class="side-divider"></div>
+          <div class="combat-ladder" aria-label="克制关系：红大于蓝，蓝大于绿，绿大于红，同色平局">
+            <span class="combat-pair">
+              <i class="combat-dot" style="--dot-rgb: 255, 93, 113" aria-hidden="true"></i>红
+              <b>›</b>
+              <i class="combat-dot" style="--dot-rgb: 78, 144, 255" aria-hidden="true"></i>蓝
+            </span>
+            <span class="combat-pair">
+              <i class="combat-dot" style="--dot-rgb: 78, 144, 255" aria-hidden="true"></i>蓝
+              <b>›</b>
+              <i class="combat-dot" style="--dot-rgb: 47, 216, 155" aria-hidden="true"></i>绿
+            </span>
+            <span class="combat-pair">
+              <i class="combat-dot" style="--dot-rgb: 47, 216, 155" aria-hidden="true"></i>绿
+              <b>›</b>
+              <i class="combat-dot" style="--dot-rgb: 255, 93, 113" aria-hidden="true"></i>红
+            </span>
+          </div>
+          <p class="side-card__hint">
+            同色平局后，双方暴露该棋子所属方的 2 个回合，棋子顶部显示倒计时。落点邻接多枚敌人时，由你依次点选交战顺序；每枚敌人本次移动只结算一次。
+          </p>
+        </section>
+
+        <p class="side-note">任一方仅剩 1 枚即结束 · 双方同时仅剩 1 枚或 40 回合用尽则平局</p>
+      </aside>
+
+      <section class="log-card" aria-labelledby="log-title">
+        <div class="log-card__head">
+          <div>
+            <p class="eyebrow">MATCH LOG</p>
+            <h3 id="log-title">对局记录</h3>
+          </div>
+          <span class="log-count" id="log-count">0 条</span>
+        </div>
+        <div class="log-scroll" id="log-scroll" role="log" aria-live="polite">
+          <p class="log-empty">对局开始后，移动、战斗、看子与暴露事件会记录在这里。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="settle-bar" id="settle-bar" hidden role="status" aria-live="polite">
+    <div class="settle-bar__main">
+      <span class="settle-bar__pulse" aria-hidden="true"></span>
+      <span class="settle-bar__label" id="settle-label">结算中，请稍候…</span>
+      <span class="settle-bar__duration" id="settle-duration">1.0s</span>
+    </div>
+    <div class="settle-bar__track" aria-hidden="true">
+      <span class="settle-bar__fill" id="settle-fill"></span>
+    </div>
+  </div>
+
+  <div class="battle-layer" id="battle-layer" hidden>
+    <div class="battle-toast" id="battle-toast" role="alert" aria-live="assertive" aria-atomic="true">
+      <p class="battle-toast__eyebrow">BATTLE RESULT</p>
+      <p class="battle-toast__title" id="battle-title"></p>
+      <div class="battle-toast__lines" id="battle-lines"></div>
+      <p class="battle-toast__hint">战斗结算中 · 请稍候…</p>
+    </div>
+  </div>
+
+  <div class="peek-confirm-layer" id="peek-confirm-layer" hidden>
+    <div class="peek-confirm" role="dialog" aria-modal="true" aria-labelledby="peek-confirm-title">
+      <p class="peek-confirm__eyebrow">PEEK · 看子</p>
+      <h3 class="peek-confirm__title" id="peek-confirm-title">使用看子？</h3>
+      <p class="peek-confirm__detail" id="peek-confirm-detail"></p>
+      <p class="peek-confirm__warning">使用看子会锁定棋盘约 2 秒，然后切换到敌方回合。</p>
+      <div class="peek-confirm__actions">
+        <button class="peek-confirm__cancel" id="cancel-peek-button" type="button">取消</button>
+        <button class="peek-confirm__confirm" id="confirm-peek-button" type="button">使用看子</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="peek-layer" id="peek-layer" hidden>
+    <div class="peek-toast" role="status" aria-live="polite">
+      <div class="peek-toast__token" id="peek-token">?</div>
+      <div class="peek-toast__copy">
+        <p class="peek-toast__eyebrow" id="peek-eyebrow">PEEK</p>
+        <p class="peek-toast__title" id="peek-title"></p>
+        <p class="peek-toast__detail" id="peek-detail">2 秒后自动关闭</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="gameover-layer" id="gameover-layer" hidden>
+    <div class="gameover-card" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+      <p class="gameover-card__eyebrow">MATCH COMPLETE</p>
+      <h2 class="gameover-card__title" id="gameover-title">你赢了！</h2>
+      <p class="gameover-card__detail" id="gameover-detail"></p>
+      <div class="gameover-card__score" id="gameover-score"></div>
+      <button class="gameover-card__button" id="restart-button" type="button">再来一局</button>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+
+    /**
+     * 六边暗棋 · 棋盘数据结构
+     *
+     * 坐标系：轴向坐标（axial coordinates）
+     *   q —— 向右下方的轴
+     *   r —— 向正下方的轴
+     *   s = -q - r（三条轴始终满足 q + r + s = 0）
+     *
+     * 合法格子满足 max(|q|, |r|, |s|) <= 2，共 19 格。
+     * 渲染时：横向中心 = x * 步距，其中 x = q + r / 2；纵向中心 = r * 步距。
+     * cells 是一维数组，数组下标即格子 id；byAxial 提供 "q,r" 查询。
+     */
+    const BOARD_RADIUS = 2;
+
+    const ZONE = Object.freeze({
+      TOP: "top-start",
+      BOTTOM: "bottom-start",
+      NEUTRAL: "neutral",
+    });
+
+    function buildBoard(radius) {
+      const cells = [];
+
+      for (let r = -radius; r <= radius; r += 1) {
+        for (let q = -radius; q <= radius; q += 1) {
+          const s = -q - r;
+          if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) > radius) {
+            continue;
+          }
+
+          const isTop = r === -radius;
+          const isBottom = r === radius;
+
+          cells.push({
+            id: cells.length,
+            q,
+            r,
+            s,
+            x: q + r / 2,
+            zone: isTop ? ZONE.TOP : isBottom ? ZONE.BOTTOM : ZONE.NEUTRAL,
+            isStart: isTop || isBottom,
+            coordLabel: "",
+            piece: null,
+          });
+        }
+      }
+
+      const rows = new Map();
+      for (const cell of cells) {
+        if (!rows.has(cell.r)) {
+          rows.set(cell.r, []);
+        }
+        rows.get(cell.r).push(cell);
+      }
+
+      for (const [r, row] of rows) {
+        row.sort((first, second) => first.x - second.x);
+        row.forEach((cell, index) => {
+          cell.coordLabel = `${String.fromCharCode(65 + r + radius)}${index + 1}`;
+        });
+      }
+
+      const byAxial = new Map(
+        cells.map((cell) => [`${cell.q},${cell.r}`, cell])
+      );
+
+      return {
+        radius,
+        sideLength: radius + 1,
+        cells,
+        byAxial,
+        getCell(q, r) {
+          return byAxial.get(`${q},${r}`) ?? null;
+        },
+      };
+    }
+
+    const boardData = buildBoard(BOARD_RADIUS);
+
+    /**
+     * 六边形的 6 个轴向相邻方向（顺时针排列）。
+     * 对任意格子 (q, r)，相邻格为：
+     *   (q + direction.q, r + direction.r)
+     * 只返回棋盘内的合法格子。
+     */
+    const HEX_DIRECTIONS = Object.freeze([
+      Object.freeze({ q: 1, r: 0, name: "东" }),
+      Object.freeze({ q: 1, r: -1, name: "东北" }),
+      Object.freeze({ q: 0, r: -1, name: "西北" }),
+      Object.freeze({ q: -1, r: 0, name: "西" }),
+      Object.freeze({ q: -1, r: 1, name: "西南" }),
+      Object.freeze({ q: 0, r: 1, name: "东南" }),
+    ]);
+
+    function getNeighbors(q, r) {
+      const neighbors = [];
+
+      for (const direction of HEX_DIRECTIONS) {
+        const neighbor = boardData.getCell(q + direction.q, r + direction.r);
+        if (neighbor) {
+          neighbors.push(neighbor);
+        }
+      }
+
+      return neighbors;
+    }
+
+    /* ---------- 阵营与棋子 ---------- */
+
+    const SIDES = Object.freeze({
+      PLAYER: Object.freeze({
+        id: "player",
+        zone: ZONE.BOTTOM,
+        label: "己方",
+        position: "下方",
+      }),
+      OPPONENT: Object.freeze({
+        id: "opponent",
+        zone: ZONE.TOP,
+        label: "敌方",
+        position: "上方",
+      }),
+    });
+
+    const PIECE_COLORS = Object.freeze([
+      Object.freeze({ id: "red", label: "红", rgb: "255, 93, 113" }),
+      Object.freeze({ id: "blue", label: "蓝", rgb: "78, 144, 255" }),
+      Object.freeze({ id: "green", label: "绿", rgb: "47, 216, 155" }),
+    ]);
+
+    const COLOR_BEATS = Object.freeze({
+      red: "blue",
+      blue: "green",
+      green: "red",
+    });
+
+    const gameState = {
+      currentPlayer: SIDES.PLAYER.id,
+      pieces: [],
+      selectedPiece: null,
+      legalTargetIds: new Set(),
+      moveCount: 0,
+      swapCount: 0,
+      turnCounts: {
+        player: 0,
+        opponent: 0,
+      },
+      pendingCombat: null,
+      gameOver: false,
+      winner: null,
+      peekCandidate: null,
+      pendingDeclaration: null,
+      roundNumber: 1,
+      isLocked: false,
+      settlementMessage: "",
+      log: [],
+      trails: {
+        player: null,
+        opponent: null,
+      },
+    };
+
+    const MAX_ROUNDS = 40;
+    const AI_DELAY_MS = 1000;
+    const SETTLE_SHORT_MS = 1000;
+    const AI_PEEK_CHANCE = 0.4;
+    const PEEK_RESULT_MS = 2000;
+    const BATTLE_TOAST_MS = 2800;
+    // 本局采用“仅剩 1 枚即结束”；如需改为归零判负，把这里改为 0。
+    const DEFEAT_PIECE_COUNT = 1;
+
+    const boardEl = document.getElementById("board");
+    const statusEl = document.getElementById("board-status");
+    const pieceCountEl = document.getElementById("piece-count");
+    const turnBarEl = document.getElementById("turn-bar");
+    const turnNameEl = document.getElementById("turn-name");
+    const turnSideEl = document.getElementById("turn-side");
+    const turnNoteEl = document.getElementById("turn-note");
+    const roundCounterEl = document.getElementById("round-counter");
+    const roundValueEl = document.getElementById("round-value");
+    const roundMaxEl = document.getElementById("round-max");
+    const roundRemainEl = document.getElementById("round-remain");
+    const battleLayerEl = document.getElementById("battle-layer");
+    const battleTitleEl = document.getElementById("battle-title");
+    const battleLinesEl = document.getElementById("battle-lines");
+    const peekConfirmLayerEl = document.getElementById("peek-confirm-layer");
+    const peekConfirmDetailEl = document.getElementById("peek-confirm-detail");
+    const confirmPeekButton = document.getElementById("confirm-peek-button");
+    const cancelPeekButton = document.getElementById("cancel-peek-button");
+    const peekLayerEl = document.getElementById("peek-layer");
+    const peekTokenEl = document.getElementById("peek-token");
+    const peekEyebrowEl = document.getElementById("peek-eyebrow");
+    const peekTitleEl = document.getElementById("peek-title");
+    const peekDetailEl = document.getElementById("peek-detail");
+    const gameoverLayerEl = document.getElementById("gameover-layer");
+    const gameoverTitleEl = document.getElementById("gameover-title");
+    const gameoverDetailEl = document.getElementById("gameover-detail");
+    const gameoverScoreEl = document.getElementById("gameover-score");
+    const restartButton = document.getElementById("restart-button");
+    const logScrollEl = document.getElementById("log-scroll");
+    const logCountEl = document.getElementById("log-count");
+    const settleBarEl = document.getElementById("settle-bar");
+    const settleLabelEl = document.getElementById("settle-label");
+    const settleDurationEl = document.getElementById("settle-duration");
+    const settleFillEl = document.getElementById("settle-fill");
+    const warPromptEl = document.getElementById("war-prompt");
+    const declareWarButton = document.getElementById("declare-war-button");
+    const skipWarButton = document.getElementById("skip-war-button");
+    const cellElements = new Map();
+    let battleTimer = null;
+    let aiTimer = null;
+    let peekTimer = null;
+    let settleTimer = null;
+    let settleBarTimer = null;
+    let settleDone = null;
+    let settlementSeq = 0;
+    let battleOnHidden = null;
+    let peekOnHidden = null;
+
+    function shuffle(list) {
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+
+    function deploySide(side) {
+      const startCells = boardData.cells.filter((cell) => cell.zone === side.zone);
+      const shuffledColors = shuffle([...PIECE_COLORS]);
+
+      return startCells.map((cell, index) => {
+        const piece = {
+          id: `${side.id}-${index}`,
+          owner: side.id,
+          color: shuffledColors[index],
+          q: cell.q,
+          r: cell.r,
+          revealed: false,
+          revealTurns: 0,
+          revealStartTurn: 0,
+        };
+
+        cell.piece = piece;
+        return piece;
+      });
+    }
+
+    function deployPieces() {
+      for (const cell of boardData.cells) {
+        cell.piece = null;
+      }
+
+      gameState.currentPlayer = SIDES.PLAYER.id;
+      gameState.pieces = [
+        ...deploySide(SIDES.PLAYER),
+        ...deploySide(SIDES.OPPONENT),
+      ];
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      gameState.moveCount = 0;
+      gameState.swapCount = 0;
+      gameState.turnCounts.player = 0;
+      gameState.turnCounts.opponent = 0;
+      gameState.pendingCombat = null;
+      gameState.gameOver = false;
+      gameState.winner = null;
+      gameState.peekCandidate = null;
+      gameState.pendingDeclaration = null;
+      gameState.roundNumber = 1;
+      gameState.isLocked = false;
+      gameState.settlementMessage = "";
+      gameState.log = [];
+      gameState.trails.player = null;
+      gameState.trails.opponent = null;
+    }
+
+    function isPlayerTurn() {
+      return gameState.currentPlayer === SIDES.PLAYER.id;
+    }
+
+    /* ---------- 棋盘渲染 ---------- */
+
+    function createCellElement(cell) {
+      const cellEl = document.createElement("div");
+      cellEl.className = `cell cell--${cell.zone}`;
+      cellEl.style.setProperty("--x", String(cell.x));
+      cellEl.style.setProperty("--r", String(cell.r));
+      cellEl.style.setProperty("--delay", `${cell.id * 16}ms`);
+
+      cellEl.dataset.q = String(cell.q);
+      cellEl.dataset.r = String(cell.r);
+      cellEl.dataset.s = String(cell.s);
+      cellEl.dataset.zone = cell.zone;
+
+      cellEl.setAttribute("role", "gridcell");
+      cellEl.setAttribute("aria-rowindex", String(cell.r + BOARD_RADIUS + 1));
+      cellEl.setAttribute("aria-colindex", String(cell.q + BOARD_RADIUS + 1));
+      cellEl.title = `棋盘坐标 ${cell.coordLabel} · 轴向坐标 q=${cell.q}, r=${cell.r}, s=${cell.s}`;
+
+      const aura = document.createElement("span");
+      aura.className = "cell__aura";
+      aura.setAttribute("aria-hidden", "true");
+
+      const hex = document.createElement("span");
+      hex.className = "cell__hex";
+
+      const face = document.createElement("span");
+      face.className = "cell__face";
+
+      const zoneBadge = document.createElement("span");
+      if (cell.isStart) {
+        zoneBadge.className = "cell__tag";
+        zoneBadge.textContent = cell.zone === ZONE.TOP ? "上" : "下";
+      } else {
+        zoneBadge.className = "cell__pip";
+      }
+      zoneBadge.setAttribute("aria-hidden", "true");
+
+      const coord = document.createElement("span");
+      coord.className = "cell__coord";
+      coord.textContent = cell.coordLabel;
+      coord.setAttribute("aria-hidden", "true");
+
+      const pieceMount = document.createElement("span");
+      pieceMount.className = "cell__piece-mount";
+      pieceMount.setAttribute("aria-hidden", "true");
+
+      const trail = document.createElement("span");
+      trail.className = "cell__trail";
+      trail.setAttribute("aria-hidden", "true");
+
+      const revealTimer = document.createElement("span");
+      revealTimer.className = "cell__reveal-timer";
+      revealTimer.hidden = true;
+      revealTimer.setAttribute("aria-hidden", "true");
+
+      face.append(zoneBadge, coord, pieceMount);
+      hex.appendChild(face);
+      cellEl.append(aura, hex, trail, revealTimer);
+
+      return cellEl;
+    }
+
+    function renderBoardShell() {
+      const fragment = document.createDocumentFragment();
+
+      for (const cell of boardData.cells) {
+        const cellEl = createCellElement(cell);
+        cellElements.set(cell.id, cellEl);
+        fragment.appendChild(cellEl);
+      }
+
+      boardEl.replaceChildren(fragment);
+    }
+
+    function createPieceElement(piece, options = {}) {
+      const isEnemy = piece.owner === SIDES.OPPONENT.id;
+      const isShown = !isEnemy || piece.revealed;
+      const pieceEl = document.createElement("span");
+      const classes = [
+        "piece",
+        piece.owner === SIDES.PLAYER.id ? "piece--side-player" : "piece--side-opponent",
+      ];
+
+      if (isShown) {
+        classes.push("piece--faceup");
+        if (isEnemy) {
+          classes.push("piece--enemy");
+        }
+      } else {
+        classes.push("piece--hidden");
+      }
+
+      if (options.justRevealed) {
+        classes.push("piece--revealed");
+      }
+
+      pieceEl.className = classes.join(" ");
+      pieceEl.setAttribute("aria-hidden", "true");
+
+      if (isShown) {
+        pieceEl.style.setProperty("--piece-rgb", piece.color.rgb);
+      }
+
+      const inner = document.createElement("span");
+      inner.className = "piece__inner";
+
+      const glyph = document.createElement("span");
+      glyph.className = "piece__glyph";
+      glyph.textContent = isShown ? piece.color.label : "?";
+
+      inner.appendChild(glyph);
+      pieceEl.appendChild(inner);
+
+      return pieceEl;
+    }
+
+    function mountAllPieces() {
+      for (const cell of boardData.cells) {
+        if (!cell.piece) {
+          continue;
+        }
+
+        const mount = cellElements.get(cell.id).querySelector(".cell__piece-mount");
+        mount.appendChild(createPieceElement(cell.piece));
+      }
+    }
+
+    function replacePieceElement(piece, justRevealed = false) {
+      const cell = boardData.getCell(piece.q, piece.r);
+      if (!cell) {
+        return;
+      }
+
+      const mount = cellElements.get(cell.id).querySelector(".cell__piece-mount");
+      mount.replaceChildren(createPieceElement(piece, { justRevealed }));
+    }
+
+    function getCellLabel(cell) {
+      const parts = [
+        `第 ${cell.id + 1} 格`,
+        `棋盘坐标 ${cell.coordLabel}`,
+        `轴向坐标 q=${cell.q}，r=${cell.r}，s=${cell.s}`,
+      ];
+
+      if (cell.zone === ZONE.TOP) {
+        parts.push("上方起始格");
+      } else if (cell.zone === ZONE.BOTTOM) {
+        parts.push("下方起始格");
+      }
+
+      const isSelected = Boolean(
+        gameState.selectedPiece
+        && cell.piece
+        && gameState.selectedPiece.id === cell.piece.id
+      );
+      const isSwapTarget = Boolean(
+        isPlayerTurn()
+        && gameState.selectedPiece
+        && cell.piece
+        && cell.piece.owner === SIDES.PLAYER.id
+        && gameState.selectedPiece.id !== cell.piece.id
+      );
+      const isCombatTarget = Boolean(
+        gameState.pendingCombat
+        && gameState.pendingCombat.targetIds.has(cell.id)
+      );
+      const isDeclarationTarget = Boolean(
+        gameState.pendingDeclaration
+        && gameState.pendingDeclaration.targetIds.has(cell.id)
+      );
+
+      if (cell.piece) {
+        if (cell.piece.owner === SIDES.PLAYER.id) {
+          parts.push(`己方${cell.piece.color.label}色棋子`);
+        } else if (cell.piece.revealed) {
+          parts.push(`敌方已暴露的${cell.piece.color.label}色棋子`);
+        } else {
+          parts.push("敌方棋子，背面朝上");
+        }
+
+        if (isSelected) {
+          parts.push("已选中");
+        } else if (isSwapTarget) {
+          parts.push("可点击换位");
+        } else if (isDeclarationTarget) {
+          parts.push("点击宣战");
+        } else if (isCombatTarget) {
+          parts.push("点击选择为交战目标");
+        }
+
+        if (cell.piece.revealed && cell.piece.revealTurns > 0) {
+          parts.push(`暴露剩余${cell.piece.revealTurns}回合`);
+        }
+      } else if (gameState.legalTargetIds.has(cell.id)) {
+        parts.push("可移动到此格");
+      }
+
+      return parts.join("，");
+    }
+
+    function syncUI() {
+      pieceCountEl.textContent = String(gameState.pieces.length).padStart(2, "0");
+      boardEl.setAttribute(
+        "aria-label",
+        `六边暗棋棋盘，共 19 个格子，当前 ${gameState.pieces.length} 枚棋子`
+      );
+
+      for (const cell of boardData.cells) {
+        const cellEl = cellElements.get(cell.id);
+        if (!cellEl) {
+          continue;
+        }
+
+        const piece = cell.piece;
+        const isSelected = Boolean(
+          gameState.selectedPiece
+          && piece
+          && gameState.selectedPiece.id === piece.id
+        );
+        const isMoveTarget = gameState.legalTargetIds.has(cell.id);
+        const isSwapTarget = Boolean(
+          isPlayerTurn()
+          && gameState.selectedPiece
+          && piece
+          && piece.owner === SIDES.PLAYER.id
+          && gameState.selectedPiece.id !== piece.id
+        );
+        const isCombatTarget = Boolean(
+          (gameState.pendingCombat
+            && gameState.pendingCombat.targetIds.has(cell.id))
+          || (gameState.pendingDeclaration
+            && gameState.pendingDeclaration.targetIds.has(cell.id))
+        );
+
+        cellEl.classList.toggle("is-occupied", Boolean(piece));
+        cellEl.classList.toggle("is-own-piece", piece?.owner === SIDES.PLAYER.id);
+        cellEl.classList.toggle("is-enemy-piece", piece?.owner === SIDES.OPPONENT.id);
+        cellEl.classList.toggle("is-selected", isSelected);
+        cellEl.classList.toggle("is-move-target", isMoveTarget);
+        cellEl.classList.toggle("is-swap-target", isSwapTarget);
+        cellEl.classList.toggle("is-combat-target", isCombatTarget);
+        cellEl.classList.toggle(
+          "is-trail-player",
+          gameState.trails.player === cell.id
+        );
+        cellEl.classList.toggle(
+          "is-trail-opponent",
+          gameState.trails.opponent === cell.id
+        );
+
+        const revealTimerEl = cellEl.querySelector(".cell__reveal-timer");
+        const revealTurns = piece && piece.revealed ? piece.revealTurns : 0;
+        cellEl.classList.toggle("is-revealed-cell", revealTurns > 0);
+        revealTimerEl.hidden = revealTurns <= 0;
+        if (revealTurns > 0) {
+          revealTimerEl.textContent = `剩${revealTurns}回合`;
+        }
+
+        cellEl.setAttribute("aria-label", getCellLabel(cell));
+        if (isSelected) {
+          cellEl.setAttribute("aria-selected", "true");
+        } else {
+          cellEl.removeAttribute("aria-selected");
+        }
+      }
+    }
+
+    function syncRoundCounter() {
+      const remaining = Math.max(0, MAX_ROUNDS - gameState.roundNumber);
+      const tense = gameState.roundNumber >= MAX_ROUNDS
+        ? "final"
+        : gameState.roundNumber >= MAX_ROUNDS - 5
+          ? "near"
+          : "normal";
+
+      roundValueEl.textContent = String(gameState.roundNumber).padStart(2, "0");
+      roundMaxEl.textContent = String(MAX_ROUNDS);
+      roundRemainEl.textContent = `剩 ${remaining}`;
+      roundCounterEl.dataset.tense = tense;
+      roundCounterEl.setAttribute(
+        "aria-label",
+        `当前回合 ${gameState.roundNumber}，共 ${MAX_ROUNDS} 回合`
+      );
+    }
+
+    function syncTurnUI() {
+      syncRoundCounter();
+
+      if (gameState.gameOver) {
+        turnBarEl.dataset.turn = "over";
+        turnBarEl.dataset.phase = "over";
+        turnNameEl.textContent = "结束";
+        turnSideEl.textContent = "对局结束";
+        turnNoteEl.textContent = "胜负已定 · 点击【再来一局】重新开始。";
+        boardEl.classList.add("is-locked");
+        boardEl.classList.remove("is-choosing-target");
+        return;
+      }
+
+      if (gameState.isLocked) {
+        turnBarEl.dataset.turn = "settling";
+        turnBarEl.dataset.phase = "settling";
+        turnNameEl.textContent = "结算";
+        turnSideEl.textContent = "请稍候";
+        turnNoteEl.textContent = gameState.settlementMessage || "结算中，请稍候…";
+        boardEl.classList.add("is-locked");
+        boardEl.classList.remove("is-choosing-target");
+        return;
+      }
+
+      if (gameState.pendingDeclaration) {
+        turnBarEl.dataset.turn = "player";
+        turnBarEl.dataset.phase = "war";
+        turnNameEl.textContent = "宣战";
+        turnSideEl.textContent = "换位冲突";
+        turnNoteEl.textContent = "换位后与敌方相邻，是否宣战？";
+        boardEl.classList.toggle("is-locked", false);
+        boardEl.classList.toggle("is-choosing-target", true);
+        return;
+      }
+
+      const pending = gameState.pendingCombat;
+      const playerTurn = isPlayerTurn();
+
+      turnBarEl.dataset.turn = playerTurn ? "player" : "opponent";
+      turnBarEl.dataset.phase = pending
+        ? "combat"
+        : playerTurn
+          ? "normal"
+          : "thinking";
+      turnNameEl.textContent = playerTurn ? "你" : "敌方";
+
+      if (pending) {
+        const isSwapWar = pending.source === "swap";
+        turnSideEl.textContent = isSwapWar ? "宣战 · 待选目标" : "交战中 · 待选目标";
+        turnNoteEl.textContent = isSwapWar
+          ? pending.results.length > 0
+            ? "上一场宣战已结算 · 请选择下一个目标（点击高亮棋子）。"
+            : "请选择宣战目标 · 点击高亮的敌方棋子。"
+          : pending.results.length > 0
+            ? "上一场已结算 · 请选择下一个交战目标（点击高亮棋子）。"
+            : "请选择先与谁交战 · 点击高亮的敌方棋子。";
+        boardEl.classList.toggle("is-locked", false);
+        boardEl.classList.toggle("is-choosing-target", true);
+        return;
+      }
+
+      if (playerTurn) {
+        turnSideEl.textContent = "下方 · 玩家操作";
+        turnNoteEl.textContent = "选择己方棋子移动；选中后再点任意另一枚己方棋子可换位；点击敌方背面棋子可使用看子。";
+      } else {
+        turnSideEl.textContent = "上方 · AI 自动行动";
+        turnNoteEl.textContent = "敌方正在思考…";
+      }
+
+      boardEl.classList.toggle("is-locked", !playerTurn);
+      boardEl.classList.toggle("is-choosing-target", false);
+    }
+
+    /* ---------- 状态与战斗弹窗 ---------- */
+
+    function setStatus(message, tone = "hint") {
+      statusEl.textContent = message;
+      statusEl.dataset.tone = tone;
+    }
+
+    function renderLog() {
+      const logs = gameState.log;
+      logScrollEl.replaceChildren();
+
+      if (logs.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "log-empty";
+        empty.textContent = "对局开始后，移动、战斗、看子与暴露事件会记录在这里。";
+        logScrollEl.appendChild(empty);
+      } else {
+        const rounds = new Map();
+        for (const entry of logs) {
+          if (!rounds.has(entry.round)) {
+            rounds.set(entry.round, []);
+          }
+          rounds.get(entry.round).push(entry);
+        }
+
+        const roundNumbers = [...rounds.keys()].sort((first, second) => first - second);
+        for (const roundNumber of roundNumbers) {
+          const roundHeader = document.createElement("div");
+          roundHeader.className = "log-round";
+          roundHeader.textContent = `第 ${roundNumber} 回合`;
+          logScrollEl.appendChild(roundHeader);
+
+          const roundEntries = rounds.get(roundNumber);
+          for (let index = 0; index < roundEntries.length; index += 1) {
+            const entry = roundEntries[index];
+            const entryEl = document.createElement("div");
+            entryEl.className = [
+              "log-entry",
+              `log-entry--${entry.kind}`,
+              entry.tone === "normal" ? "" : `log-entry--${entry.tone}`,
+              index === roundEntries.length - 1 && roundNumber === roundNumbers[roundNumbers.length - 1]
+                ? "log-entry--latest"
+                : "",
+            ].filter(Boolean).join(" ");
+            entryEl.textContent = entry.text;
+            logScrollEl.appendChild(entryEl);
+          }
+        }
+      }
+
+      logCountEl.textContent = `${logs.length} 条`;
+      logScrollEl.scrollTop = logScrollEl.scrollHeight;
+    }
+
+    function addLog(kind, text, tone = "normal") {
+      gameState.log.push({
+        round: gameState.roundNumber,
+        kind,
+        text,
+        tone,
+      });
+      renderLog();
+    }
+
+    function createBattleChip(color, prefix) {
+      const chip = document.createElement("span");
+      chip.className = "battle-chip";
+      chip.style.setProperty("--chip-rgb", color.rgb);
+
+      const dot = document.createElement("i");
+      dot.className = "battle-chip__dot";
+      dot.setAttribute("aria-hidden", "true");
+
+      const label = document.createElement("span");
+      label.textContent = `${prefix}${color.label}色`;
+
+      chip.append(dot, label);
+      return chip;
+    }
+
+    function createBattleLine(result) {
+      const attackerIsPlayer = result.attacker.owner === SIDES.PLAYER.id;
+      const leftColor = result.attackerColor;
+      const rightColor = result.defenderColor;
+      const leftPrefix = attackerIsPlayer ? "你 · " : "敌方 · ";
+      const rightPrefix = attackerIsPlayer ? "敌方 · " : "你 · ";
+      const line = document.createElement("div");
+      line.className = "battle-line";
+
+      const vs = document.createElement("span");
+      vs.className = "battle-line__vs";
+      vs.textContent = "VS";
+
+      const playerWon = result.outcome === "tie"
+        ? null
+        : attackerIsPlayer
+          ? result.outcome === "win"
+          : result.outcome === "lose";
+      const outcome = document.createElement("span");
+      outcome.className = `battle-line__outcome battle-line__outcome--${
+        playerWon === null ? "tie" : playerWon ? "win" : "lose"
+      }`;
+      outcome.textContent = playerWon === null ? "平" : playerWon ? "胜" : "负";
+
+      line.append(
+        createBattleChip(leftColor, leftPrefix),
+        vs,
+        createBattleChip(rightColor, rightPrefix),
+        outcome
+      );
+
+      return line;
+    }
+
+    function getBattleText(result) {
+      const attackerIsPlayer = result.attacker.owner === SIDES.PLAYER.id;
+
+      if (result.outcome === "tie") {
+        return "同色平局，双双暴露";
+      }
+
+      if (attackerIsPlayer) {
+        return result.outcome === "win"
+          ? `你吃掉了敌方的${result.defenderColor.label}色棋子`
+          : `你的${result.attackerColor.label}色棋子被敌方${result.defenderColor.label}色棋子吃掉`;
+      }
+
+      return result.outcome === "win"
+        ? `你的${result.defenderColor.label}色棋子被敌方${result.attackerColor.label}色棋子吃掉`
+        : `你吃掉了敌方的${result.attackerColor.label}色棋子`;
+    }
+
+    function buildBattleTitle(results) {
+      if (results.length > 1) {
+        return `连续比大小 · ${results.length} 次结算`;
+      }
+
+      return getBattleText(results[0]);
+    }
+
+    function showBattleToast(results, onHidden = null) {
+      if (!results.length) {
+        if (onHidden) {
+          onHidden();
+        }
+        return;
+      }
+
+      battleTitleEl.textContent = buildBattleTitle(results);
+      battleLinesEl.replaceChildren(...results.map(createBattleLine));
+      battleLayerEl.hidden = false;
+
+      if (battleTimer) {
+        window.clearTimeout(battleTimer);
+      }
+
+      battleOnHidden = onHidden;
+      battleTimer = window.setTimeout(() => {
+        battleLayerEl.hidden = true;
+        battleTimer = null;
+        const callback = battleOnHidden;
+        battleOnHidden = null;
+        if (callback) {
+          callback();
+        }
+      }, BATTLE_TOAST_MS);
+    }
+
+    function hideBattleToast() {
+      if (battleTimer) {
+        window.clearTimeout(battleTimer);
+        battleTimer = null;
+      }
+
+      battleOnHidden = null;
+      battleLayerEl.hidden = true;
+    }
+
+    /* ---------- 结算锁定 ---------- */
+
+    function hideSettlementBar() {
+      if (settleBarTimer) {
+        window.clearTimeout(settleBarTimer);
+        settleBarTimer = null;
+      }
+
+      settleBarEl.hidden = true;
+      settleBarEl.classList.remove("is-active");
+    }
+
+    function showSettlementBar(durationMs) {
+      hideSettlementBar();
+      settleLabelEl.textContent = "结算中，请稍候…";
+      settleDurationEl.textContent = `${(durationMs / 1000).toFixed(1)}s`;
+      settleBarEl.style.setProperty("--settle-duration", `${durationMs}ms`);
+      settleBarEl.hidden = false;
+
+      // 强制重启动画，确保连续两次结算读条都能从头开始。
+      settleBarEl.classList.remove("is-active");
+      void settleBarEl.offsetWidth;
+      settleBarEl.classList.add("is-active");
+
+      settleBarTimer = window.setTimeout(() => {
+        settleBarEl.hidden = true;
+        settleBarEl.classList.remove("is-active");
+        settleBarTimer = null;
+      }, durationMs);
+    }
+
+    function clearSettlementTimers() {
+      if (settleTimer) {
+        window.clearTimeout(settleTimer);
+        settleTimer = null;
+      }
+
+      if (settleBarTimer) {
+        window.clearTimeout(settleBarTimer);
+        settleBarTimer = null;
+      }
+    }
+
+    function beginSettlement({
+      message = "结算中，请稍候…",
+      barMs = SETTLE_SHORT_MS,
+      completeMs = null,
+      onComplete = null,
+      showBar = true,
+    } = {}) {
+      clearSettlementTimers();
+      settlementSeq += 1;
+      const token = settlementSeq;
+
+      settleDone = onComplete;
+      gameState.isLocked = true;
+      gameState.settlementMessage = message;
+
+      if (showBar) {
+        showSettlementBar(barMs);
+      } else {
+        hideSettlementBar();
+      }
+
+      syncTurnUI();
+      setStatus(message, "warn");
+
+      if (completeMs !== null) {
+        settleTimer = window.setTimeout(() => {
+          settleTimer = null;
+          finishSettlement(token);
+        }, completeMs);
+      }
+
+      return () => finishSettlement(token);
+    }
+
+    function finishSettlement(token) {
+      if (token !== settlementSeq || gameState.gameOver) {
+        return;
+      }
+
+      clearSettlementTimers();
+      hideSettlementBar();
+      gameState.isLocked = false;
+      gameState.settlementMessage = "";
+
+      const callback = settleDone;
+      settleDone = null;
+
+      if (callback) {
+        callback();
+      } else {
+        syncTurnUI();
+      }
+    }
+
+    function cancelSettlement() {
+      settlementSeq += 1;
+      clearSettlementTimers();
+      hideSettlementBar();
+      settleDone = null;
+      gameState.isLocked = false;
+      gameState.settlementMessage = "";
+    }
+
+    /* ---------- 回合与操作 ---------- */
+
+    function clearSelection(message) {
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+
+      if (message) {
+        setStatus(message);
+      }
+    }
+
+    function advanceSideTurn(side) {
+      gameState.turnCounts[side] += 1;
+
+      for (const piece of gameState.pieces) {
+        if (piece.owner !== side || !piece.revealed) {
+          continue;
+        }
+
+        if (gameState.turnCounts[side] <= piece.revealStartTurn) {
+          continue;
+        }
+
+        piece.revealTurns = Math.max(0, piece.revealTurns - 1);
+
+        if (piece.revealTurns === 0) {
+          piece.revealed = false;
+          piece.revealStartTurn = 0;
+
+          if (piece.owner === SIDES.OPPONENT.id) {
+            replacePieceElement(piece);
+          }
+        }
+      }
+    }
+
+    function clearAiTimer() {
+      if (aiTimer) {
+        window.clearTimeout(aiTimer);
+        aiTimer = null;
+      }
+    }
+
+    function finishPlayerAction(message) {
+      if (gameState.gameOver) {
+        return;
+      }
+
+      gameState.pendingCombat = null;
+      gameState.pendingDeclaration = null;
+      warPromptEl.hidden = true;
+      advanceSideTurn(SIDES.PLAYER.id);
+      gameState.currentPlayer = SIDES.OPPONENT.id;
+      gameState.trails.opponent = null;
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+      syncTurnUI();
+      setStatus(`${message} · 敌方正在思考…`, "warn");
+      scheduleEnemyTurn();
+    }
+
+    function scheduleEnemyTurn() {
+      clearAiTimer();
+
+      if (gameState.gameOver || isPlayerTurn()) {
+        return;
+      }
+
+      syncTurnUI();
+      aiTimer = window.setTimeout(() => {
+        aiTimer = null;
+        runEnemyTurn();
+      }, AI_DELAY_MS);
+    }
+
+    function endEnemyTurn(message = "敌方行动结束 · 轮到你行动") {
+      if (gameState.gameOver) {
+        return;
+      }
+
+      advanceSideTurn(SIDES.OPPONENT.id);
+
+      if (gameState.roundNumber >= MAX_ROUNDS) {
+        endGame(
+          "draw",
+          countPieces(SIDES.PLAYER.id),
+          countPieces(SIDES.OPPONENT.id),
+          "round-limit"
+        );
+        return;
+      }
+
+      gameState.roundNumber += 1;
+      gameState.currentPlayer = SIDES.PLAYER.id;
+      gameState.trails.player = null;
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+      syncTurnUI();
+      setStatus(message, "active");
+    }
+
+    function clearPeekTimer() {
+      if (peekTimer) {
+        window.clearTimeout(peekTimer);
+        peekTimer = null;
+      }
+    }
+
+    function hidePeekResult() {
+      clearPeekTimer();
+      peekOnHidden = null;
+      peekLayerEl.hidden = true;
+    }
+
+    function showPeekResult(piece, viewerId, onHidden = null) {
+      const color = piece.color;
+      const viewerIsPlayer = viewerId === SIDES.PLAYER.id;
+
+      peekTokenEl.textContent = color.label;
+      peekTokenEl.style.setProperty("--peek-rgb", color.rgb);
+      peekEyebrowEl.textContent = viewerIsPlayer ? "PEEK · 看子结果" : "ENEMY PEEK";
+      peekTitleEl.textContent = viewerIsPlayer
+        ? `敌方棋子是：${color.label}色`
+        : "敌方使用了看子";
+      peekDetailEl.textContent = viewerIsPlayer
+        ? "颜色仅显示 2 秒"
+        : `查看了你的${color.label}色棋子`;
+      peekLayerEl.hidden = false;
+
+      clearPeekTimer();
+      peekOnHidden = onHidden;
+      peekTimer = window.setTimeout(() => {
+        peekLayerEl.hidden = true;
+        peekTimer = null;
+        const callback = peekOnHidden;
+        peekOnHidden = null;
+        if (callback) {
+          callback();
+        }
+      }, PEEK_RESULT_MS);
+    }
+
+    function openPeekConfirm(piece) {
+      if (
+        gameState.gameOver
+        || !isPlayerTurn()
+        || gameState.pendingCombat
+        || gameState.pendingDeclaration
+        || gameState.isLocked
+        || piece.owner !== SIDES.OPPONENT.id
+      ) {
+        return;
+      }
+
+      if (piece.revealed) {
+        setStatus("该敌方棋子已经暴露 · 无需使用看子", "warn");
+        return;
+      }
+
+      gameState.peekCandidate = piece;
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+      peekConfirmDetailEl.textContent = `目标：q=${piece.q}，r=${piece.r} 的敌方背面棋子。`;
+      peekConfirmLayerEl.hidden = false;
+      setStatus("是否使用看子？使用后将消耗本回合。", "active");
+    }
+
+    function closePeekConfirm() {
+      peekConfirmLayerEl.hidden = true;
+      gameState.peekCandidate = null;
+
+      if (!gameState.gameOver && isPlayerTurn()) {
+        syncUI();
+        setStatus("已取消看子 · 继续你的回合", "active");
+      }
+    }
+
+    function confirmPeek() {
+      const piece = gameState.peekCandidate;
+
+      if (!piece || gameState.gameOver || gameState.isLocked || !isPlayerTurn()) {
+        peekConfirmLayerEl.hidden = true;
+        gameState.peekCandidate = null;
+        return;
+      }
+
+      const cell = boardData.getCell(piece.q, piece.r);
+      if (
+        !cell?.piece
+        || cell.piece.id !== piece.id
+        || piece.owner !== SIDES.OPPONENT.id
+        || piece.revealed
+      ) {
+        peekConfirmLayerEl.hidden = true;
+        gameState.peekCandidate = null;
+        setStatus("看子目标已失效", "warn");
+        return;
+      }
+
+      peekConfirmLayerEl.hidden = true;
+      gameState.peekCandidate = null;
+      addLog("peek", "你查看了敌方的一枚棋子", "normal");
+
+      const finishPeekSettlement = beginSettlement({
+        message: "结算中，请稍候…",
+        barMs: PEEK_RESULT_MS,
+        showBar: false,
+        onComplete: () => finishPlayerAction("你使用了看子"),
+      });
+      showPeekResult(piece, SIDES.PLAYER.id, finishPeekSettlement);
+    }
+
+    function getOwnSwapCount(selectedPiece) {
+      return gameState.pieces.filter(
+        (piece) => piece.owner === SIDES.PLAYER.id && piece.id !== selectedPiece.id
+      ).length;
+    }
+
+    function selectPiece(piece) {
+      if (
+        gameState.gameOver
+        || gameState.pendingCombat
+        || gameState.pendingDeclaration
+        || gameState.isLocked
+        || !isPlayerTurn()
+        || piece.owner !== SIDES.PLAYER.id
+      ) {
+        return;
+      }
+
+      gameState.selectedPiece = piece;
+      gameState.legalTargetIds = new Set(
+        getNeighbors(piece.q, piece.r)
+          .filter((cell) => !cell.piece)
+          .map((cell) => cell.id)
+      );
+
+      syncUI();
+
+      const moveCount = gameState.legalTargetIds.size;
+      const swapCount = getOwnSwapCount(piece);
+
+      if (moveCount > 0 && swapCount > 0) {
+        setStatus(
+          `已选中${piece.color.label}色棋子 · ${moveCount} 格可移动 · ${swapCount} 枚己方可换位`,
+          "active"
+        );
+      } else if (moveCount > 0) {
+        setStatus(`已选中${piece.color.label}色棋子 · ${moveCount} 个空格可移动`, "active");
+      } else if (swapCount > 0) {
+        setStatus(`已选中${piece.color.label}色棋子 · 点击带 ⇄ 标记的己方棋子换位`, "active");
+      } else {
+        setStatus(`已选中${piece.color.label}色棋子 · 暂无可执行操作`, "warn");
+      }
+    }
+
+    function compareColors(attackerColor, defenderColor) {
+      if (attackerColor === defenderColor) {
+        return "tie";
+      }
+
+      return COLOR_BEATS[attackerColor] === defenderColor ? "win" : "lose";
+    }
+
+    function removePiece(piece) {
+      const index = gameState.pieces.findIndex((candidate) => candidate.id === piece.id);
+      if (index >= 0) {
+        gameState.pieces.splice(index, 1);
+      }
+
+      const cell = boardData.getCell(piece.q, piece.r);
+      if (cell?.piece?.id === piece.id) {
+        cell.piece = null;
+      }
+
+      const mount = cell?.piece === null
+        ? cellElements.get(cell.id)?.querySelector(".cell__piece-mount")
+        : null;
+      if (mount) {
+        mount.replaceChildren();
+      }
+    }
+
+    /**
+     * 暴露计时：
+     * 平局时 revealTurns = 2，并记录所属方当前的完成回合数。
+     * 如果暴露发生在该棋子所属方自己的回合中，则当回合不重复扣减；
+     * 之后该方每完成一个回合，倒计时 -1，归零后重新盖回。
+     */
+    function markPieceRevealed(piece) {
+      const ownerTurnBonus = gameState.currentPlayer === piece.owner ? 1 : 0;
+      piece.revealed = true;
+      piece.revealTurns = 2;
+      piece.revealStartTurn = gameState.turnCounts[piece.owner] + ownerTurnBonus;
+    }
+
+    function revealTiedPieces(firstPiece, secondPiece) {
+      const firstIsPlayer = firstPiece.owner === SIDES.PLAYER.id;
+      const playerPiece = firstIsPlayer ? firstPiece : secondPiece;
+      const enemyPiece = firstIsPlayer ? secondPiece : firstPiece;
+
+      markPieceRevealed(playerPiece);
+      markPieceRevealed(enemyPiece);
+      replacePieceElement(playerPiece, true);
+      replacePieceElement(enemyPiece, true);
+      addLog(
+        "expose",
+        `你的棋子（${playerPiece.color.label}）因平局被暴露`,
+        "normal"
+      );
+      addLog(
+        "expose",
+        `敌方的棋子（${enemyPiece.color.label}）因平局被暴露`,
+        "normal"
+      );
+    }
+
+    function getBattleLogInfo(result) {
+      const attackerIsPlayer = result.attacker.owner === SIDES.PLAYER.id;
+      const playerColor = attackerIsPlayer ? result.attackerColor : result.defenderColor;
+      const enemyColor = attackerIsPlayer ? result.defenderColor : result.attackerColor;
+
+      if (result.outcome === "tie") {
+        return {
+          text: `你的（${playerColor.label}）与敌方的（${enemyColor.label}）双双击翻`,
+          tone: "tie",
+        };
+      }
+
+      const playerWon = attackerIsPlayer
+        ? result.outcome === "win"
+        : result.outcome === "lose";
+      const winnerColor = playerWon
+        ? (attackerIsPlayer ? result.attackerColor : result.defenderColor)
+        : (attackerIsPlayer ? result.defenderColor : result.attackerColor);
+      const loserColor = playerWon
+        ? (attackerIsPlayer ? result.defenderColor : result.attackerColor)
+        : (attackerIsPlayer ? result.attackerColor : result.defenderColor);
+
+      return playerWon
+        ? {
+            text: `你的（${winnerColor.label}）吃掉了敌方的（${loserColor.label}）`,
+            tone: "good",
+          }
+        : {
+            text: `敌方（${winnerColor.label}）吃掉了你的（${loserColor.label}）`,
+            tone: "danger",
+          };
+    }
+
+    function resolveSingleBattle(attacker, defender) {
+      const outcome = compareColors(attacker.color.id, defender.color.id);
+      const result = {
+        outcome,
+        attacker,
+        defender,
+        attackerColor: attacker.color,
+        defenderColor: defender.color,
+      };
+
+      const battleLog = getBattleLogInfo(result);
+      addLog("battle", battleLog.text, battleLog.tone);
+
+      if (outcome === "win") {
+        removePiece(defender);
+      } else if (outcome === "lose") {
+        removePiece(attacker);
+      } else {
+        revealTiedPieces(attacker, defender);
+      }
+
+      return result;
+    }
+
+    function getAdjacentEnemyCells(piece) {
+      return getNeighbors(piece.q, piece.r).filter(
+        (cell) => cell.piece?.owner === SIDES.OPPONENT.id
+      );
+    }
+
+    function getAdjacentPiecesByOwner(piece, owner) {
+      return getNeighbors(piece.q, piece.r)
+        .map((cell) => cell.piece)
+        .filter((target) => target?.owner === owner);
+    }
+
+    function buildSwapWarMap(firstPiece, secondPiece, targetOwner) {
+      const targets = new Map();
+
+      for (const attacker of [firstPiece, secondPiece]) {
+        if (!attacker) {
+          continue;
+        }
+
+        const attackerCell = boardData.getCell(attacker.q, attacker.r);
+        if (!attackerCell?.piece || attackerCell.piece.id !== attacker.id) {
+          continue;
+        }
+
+        for (const target of getAdjacentPiecesByOwner(attacker, targetOwner)) {
+          const targetCell = boardData.getCell(target.q, target.r);
+          if (targetCell && !targets.has(targetCell.id)) {
+            targets.set(targetCell.id, attacker.id);
+          }
+        }
+      }
+
+      return targets;
+    }
+
+    function getPendingAttacker(pending, targetCellId) {
+      const attackerId = pending?.attackerByTarget
+        ? pending.attackerByTarget.get(targetCellId)
+        : pending?.attacker?.id;
+
+      return gameState.pieces.find((piece) => piece.id === attackerId) || null;
+    }
+
+    function prunePendingTargets(pending) {
+      for (const targetId of [...pending.targetIds]) {
+        const attackerId = pending.attackerByTarget
+          ? pending.attackerByTarget.get(targetId)
+          : pending.attacker?.id;
+        const attackerAlive = gameState.pieces.some((piece) => piece.id === attackerId);
+        if (!attackerAlive) {
+          pending.targetIds.delete(targetId);
+        }
+      }
+    }
+
+    function finishPlayerPendingCombat(pending) {
+      const results = pending.results.slice();
+      syncUI();
+
+      if (results.length === 0) {
+        finishPlayerAction("战斗结算完成");
+        return;
+      }
+
+      const finishCombats = beginSettlement({
+        message: "结算中，请稍候…",
+        barMs: SETTLE_SHORT_MS,
+        onComplete: () => finishPlayerAction("战斗结算完成"),
+      });
+      showBattleToast(results, finishCombats);
+    }
+
+    function startCombatAfterMove(attacker) {
+      const enemyCells = getAdjacentEnemyCells(attacker);
+
+      if (enemyCells.length === 0) {
+        beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          completeMs: SETTLE_SHORT_MS,
+          onComplete: () => finishPlayerAction("移动完成"),
+        });
+        return;
+      }
+
+      if (enemyCells.length === 1) {
+        const finishSettlementAction = beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          onComplete: () => finishPlayerAction("战斗结算完成"),
+        });
+
+        const result = resolveSingleBattle(attacker, enemyCells[0].piece);
+        if (checkGameOver()) {
+          return;
+        }
+
+        syncUI();
+        showBattleToast([result], finishSettlementAction);
+        return;
+      }
+
+      // 多个相邻敌人时先结算移动，再解锁给玩家自选目标。
+      gameState.pendingCombat = {
+        attacker,
+        targetIds: new Set(enemyCells.map((cell) => cell.id)),
+        results: [],
+      };
+      syncUI();
+
+      beginSettlement({
+        message: "结算中，请稍候…",
+        barMs: SETTLE_SHORT_MS,
+        completeMs: SETTLE_SHORT_MS,
+        onComplete: () => {
+          syncUI();
+          syncTurnUI();
+          setStatus("请选择先与谁交战 · 点击高亮的敌方棋子", "combat");
+        },
+      });
+    }
+
+    function chooseCombatTarget(enemyPiece) {
+      const pending = gameState.pendingCombat;
+      if (!pending) {
+        return;
+      }
+
+      const enemyCell = boardData.getCell(enemyPiece.q, enemyPiece.r);
+      if (
+        !enemyCell
+        || !pending.targetIds.has(enemyCell.id)
+        || enemyCell.piece?.id !== enemyPiece.id
+      ) {
+        setStatus("请选择高亮的敌方棋子作为交战目标", "warn");
+        return;
+      }
+
+      const attacker = getPendingAttacker(pending, enemyCell.id);
+      pending.targetIds.delete(enemyCell.id);
+
+      if (!attacker) {
+        prunePendingTargets(pending);
+        if (pending.targetIds.size === 0) {
+          finishPlayerPendingCombat(pending);
+        } else {
+          syncUI();
+          syncTurnUI();
+          setStatus("该棋子的攻击目标已失效 · 请选择下一个目标", "warn");
+        }
+        return;
+      }
+
+      const attackerCell = boardData.getCell(attacker.q, attacker.r);
+      if (!attackerCell?.piece || attackerCell.piece.id !== attacker.id) {
+        prunePendingTargets(pending);
+        if (pending.targetIds.size === 0) {
+          finishPlayerPendingCombat(pending);
+        } else {
+          syncUI();
+          syncTurnUI();
+          setStatus("该棋子已无法继续交战 · 请选择下一个目标", "warn");
+        }
+        return;
+      }
+
+      const result = resolveSingleBattle(attacker, enemyPiece);
+      pending.results.push(result);
+
+      if (checkGameOver()) {
+        return;
+      }
+
+      prunePendingTargets(pending);
+
+      if (pending.targetIds.size === 0) {
+        finishPlayerPendingCombat(pending);
+        return;
+      }
+
+      syncUI();
+      syncTurnUI();
+      setStatus(`${getBattleText(result)} · 请选择下一个交战目标`, "combat");
+    }
+
+    function enterWarDeclaration(firstPiece, secondPiece) {
+      if (gameState.gameOver) {
+        return;
+      }
+
+      const targets = buildSwapWarMap(
+        firstPiece,
+        secondPiece,
+        SIDES.OPPONENT.id
+      );
+
+      if (targets.size === 0) {
+        finishPlayerAction("换位完成");
+        return;
+      }
+
+      gameState.pendingDeclaration = {
+        attackerByTarget: targets,
+        targetIds: new Set(targets.keys()),
+      };
+      warPromptEl.hidden = false;
+      syncUI();
+      syncTurnUI();
+      setStatus("换位后与敌方相邻，是否宣战？", "combat");
+    }
+
+    function startWarCombat(firstTargetId = null) {
+      const declaration = gameState.pendingDeclaration;
+      if (!declaration) {
+        return;
+      }
+
+      const firstTargets = [...declaration.targetIds];
+      const hasPreferredTarget = (
+        firstTargetId !== null
+        && firstTargetId !== undefined
+        && declaration.targetIds.has(firstTargetId)
+      );
+      const preferredTargetId = hasPreferredTarget
+        ? firstTargetId
+        : firstTargets.length === 1
+          ? firstTargets[0]
+          : null;
+
+      gameState.pendingDeclaration = null;
+      warPromptEl.hidden = true;
+      addLog("declare", "你选择宣战", "normal");
+
+      gameState.pendingCombat = {
+        attacker: null,
+        attackerByTarget: declaration.attackerByTarget,
+        targetIds: new Set(declaration.targetIds),
+        results: [],
+        source: "swap",
+      };
+
+      syncUI();
+
+      if (preferredTargetId !== null) {
+        const targetCell = boardData.cells.find((cell) => cell.id === preferredTargetId);
+        if (targetCell?.piece) {
+          chooseCombatTarget(targetCell.piece);
+          return;
+        }
+      }
+
+      syncTurnUI();
+      setStatus("请选择宣战目标 · 点击高亮的敌方棋子", "combat");
+    }
+
+    function skipWar() {
+      if (!gameState.pendingDeclaration) {
+        return;
+      }
+
+      gameState.pendingDeclaration = null;
+      warPromptEl.hidden = true;
+      addLog("declare", "你选择跳过宣战", "normal");
+      finishPlayerAction("你选择跳过宣战");
+    }
+
+    function movePieceDirect(piece, targetCell) {
+      const sourceCell = boardData.getCell(piece.q, piece.r);
+      if (!sourceCell || !targetCell) {
+        return;
+      }
+
+      const sourceMount = cellElements
+        .get(sourceCell.id)
+        .querySelector(".cell__piece-mount");
+      const targetMount = cellElements
+        .get(targetCell.id)
+        .querySelector(".cell__piece-mount");
+      const pieceEl = sourceMount.firstElementChild;
+
+      if (pieceEl) {
+        targetMount.appendChild(pieceEl);
+      }
+
+      sourceCell.piece = null;
+      targetCell.piece = piece;
+      piece.q = targetCell.q;
+      piece.r = targetCell.r;
+    }
+
+    function swapPiecePositions(firstPiece, secondPiece) {
+      const firstCell = boardData.getCell(firstPiece.q, firstPiece.r);
+      const secondCell = boardData.getCell(secondPiece.q, secondPiece.r);
+      const firstMount = cellElements.get(firstCell.id).querySelector(".cell__piece-mount");
+      const secondMount = cellElements.get(secondCell.id).querySelector(".cell__piece-mount");
+      const firstEl = firstMount.firstElementChild;
+      const secondEl = secondMount.firstElementChild;
+
+      if (firstEl) {
+        firstEl.classList.add("piece--instant");
+      }
+      if (secondEl) {
+        secondEl.classList.add("piece--instant");
+      }
+
+      if (firstEl && secondEl) {
+        firstMount.replaceChildren(secondEl);
+        secondMount.replaceChildren(firstEl);
+      }
+
+      const firstPosition = { q: firstPiece.q, r: firstPiece.r };
+      const secondPosition = { q: secondPiece.q, r: secondPiece.r };
+      firstPiece.q = secondPosition.q;
+      firstPiece.r = secondPosition.r;
+      secondPiece.q = firstPosition.q;
+      secondPiece.r = firstPosition.r;
+      firstCell.piece = secondPiece;
+      secondCell.piece = firstPiece;
+    }
+
+    function countPieces(owner) {
+      return gameState.pieces.filter((piece) => piece.owner === owner).length;
+    }
+
+    function checkGameOver() {
+      if (gameState.gameOver) {
+        return true;
+      }
+
+      const playerCount = countPieces(SIDES.PLAYER.id);
+      const enemyCount = countPieces(SIDES.OPPONENT.id);
+
+      if (
+        playerCount <= DEFEAT_PIECE_COUNT
+        && enemyCount <= DEFEAT_PIECE_COUNT
+      ) {
+        endGame("draw", playerCount, enemyCount, "both-last");
+        return true;
+      }
+
+      if (enemyCount <= DEFEAT_PIECE_COUNT) {
+        endGame("win", playerCount, enemyCount, "enemy-last");
+        return true;
+      }
+
+      if (playerCount <= DEFEAT_PIECE_COUNT) {
+        endGame("lose", playerCount, enemyCount, "player-last");
+        return true;
+      }
+
+      return false;
+    }
+
+    function endGame(result, playerCount, enemyCount, reason = "pieces") {
+      clearAiTimer();
+      cancelSettlement();
+      hideBattleToast();
+      hidePeekResult();
+      peekConfirmLayerEl.hidden = true;
+      gameState.gameOver = true;
+      gameState.winner = result;
+      gameState.pendingCombat = null;
+      gameState.pendingDeclaration = null;
+      warPromptEl.hidden = true;
+      gameState.peekCandidate = null;
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+      syncTurnUI();
+
+      gameoverLayerEl.dataset.result = result;
+
+      if (result === "win") {
+        gameoverTitleEl.textContent = "你赢了！";
+        gameoverDetailEl.textContent = `敌方仅剩 ${DEFEAT_PIECE_COUNT} 枚棋子，触发判负条件。`;
+      } else if (result === "lose") {
+        gameoverTitleEl.textContent = "你输了！";
+        gameoverDetailEl.textContent = `己方仅剩 ${DEFEAT_PIECE_COUNT} 枚棋子，触发判负条件。`;
+      } else {
+        gameoverTitleEl.textContent = "平局！";
+        gameoverDetailEl.textContent = reason === "round-limit"
+          ? `达到 ${MAX_ROUNDS} 回合上限，双方未能分出胜负。`
+          : `双方同时仅剩 ${DEFEAT_PIECE_COUNT} 枚棋子，判定为平局。`;
+      }
+
+      gameoverScoreEl.textContent = `己方 ${playerCount}  ·  敌方 ${enemyCount}`;
+      gameoverLayerEl.hidden = false;
+
+      if (result === "win") {
+        addLog("result", "对局结束 · 你赢了！", "good");
+      } else if (result === "lose") {
+        addLog("result", "对局结束 · 你输了！", "danger");
+      } else {
+        addLog(
+          "result",
+          reason === "round-limit"
+            ? `对局结束 · ${MAX_ROUNDS} 回合用尽，平局`
+            : "对局结束 · 双方同时仅剩 1 枚，平局",
+          "tie"
+        );
+      }
+
+      setStatus(
+        result === "win"
+          ? "对局结束 · 你赢了！"
+          : result === "lose"
+            ? "对局结束 · 你输了！"
+            : "对局结束 · 平局！",
+        result === "win" ? "active" : result === "lose" ? "warn" : "combat"
+      );
+    }
+
+    function restartGame() {
+      clearAiTimer();
+      cancelSettlement();
+      hideBattleToast();
+      clearPeekTimer();
+      peekOnHidden = null;
+      peekLayerEl.hidden = true;
+      peekConfirmLayerEl.hidden = true;
+      warPromptEl.hidden = true;
+      gameState.pendingDeclaration = null;
+      gameoverLayerEl.hidden = true;
+      gameState.peekCandidate = null;
+      deployPieces();
+      cellElements.clear();
+      renderBoardShell();
+      mountAllPieces();
+      if (window.HEX_GAME) {
+        window.HEX_GAME.pieces = gameState.pieces;
+      }
+      syncUI();
+      syncTurnUI();
+      setStatus("新对局开始 · 轮到你行动", "active");
+      addLog("system", "新对局开始 · 你执下方", "normal");
+    }
+
+    function chooseRandom(list) {
+      return list[Math.floor(Math.random() * list.length)];
+    }
+
+    function getAiWinningMoves() {
+      const moves = [];
+      const enemies = gameState.pieces.filter(
+        (piece) => piece.owner === SIDES.OPPONENT.id
+      );
+
+      for (const piece of enemies) {
+        for (const cell of getNeighbors(piece.q, piece.r)) {
+          if (cell.piece) {
+            continue;
+          }
+
+          const playerTargets = getNeighbors(cell.q, cell.r)
+            .map((neighbor) => neighbor.piece)
+            .filter((target) => target?.owner === SIDES.PLAYER.id);
+
+          if (playerTargets.some((target) => compareColors(piece.color.id, target.color.id) === "win")) {
+            moves.push({ piece, targetCell: cell });
+          }
+        }
+      }
+
+      return moves;
+    }
+
+    function getAiPeekPairs() {
+      const pairs = [];
+      const enemies = gameState.pieces.filter(
+        (piece) => piece.owner === SIDES.OPPONENT.id
+      );
+
+      for (const enemyPiece of enemies) {
+        for (const cell of getNeighbors(enemyPiece.q, enemyPiece.r)) {
+          if (cell.piece?.owner === SIDES.PLAYER.id) {
+            pairs.push({ enemyPiece, playerPiece: cell.piece });
+          }
+        }
+      }
+
+      return pairs;
+    }
+
+    function getRandomAiAction() {
+      const moves = [];
+      const enemies = gameState.pieces.filter(
+        (piece) => piece.owner === SIDES.OPPONENT.id
+      );
+
+      for (const piece of enemies) {
+        for (const cell of getNeighbors(piece.q, piece.r)) {
+          if (!cell.piece) {
+            moves.push({ type: "move", piece, targetCell: cell });
+          }
+        }
+      }
+
+      for (let firstIndex = 0; firstIndex < enemies.length; firstIndex += 1) {
+        for (let secondIndex = firstIndex + 1; secondIndex < enemies.length; secondIndex += 1) {
+          moves.push({
+            type: "swap",
+            firstPiece: enemies[firstIndex],
+            secondPiece: enemies[secondIndex],
+          });
+        }
+      }
+
+      return moves.length > 0 ? chooseRandom(moves) : null;
+    }
+
+    function aiBattleRank(attacker, defender) {
+      const outcome = compareColors(attacker.color.id, defender.color.id);
+      return outcome === "win" ? 0 : outcome === "tie" ? 1 : 2;
+    }
+
+    function runAiBattles(attacker) {
+      const defenders = getNeighbors(attacker.q, attacker.r)
+        .map((cell) => cell.piece)
+        .filter((piece) => piece?.owner === SIDES.PLAYER.id)
+        .sort((first, second) => aiBattleRank(attacker, first) - aiBattleRank(attacker, second));
+      const results = [];
+
+      for (const defender of defenders) {
+        const attackerCell = boardData.getCell(attacker.q, attacker.r);
+        if (!attackerCell?.piece || attackerCell.piece.id !== attacker.id) {
+          break;
+        }
+
+        const defenderCell = boardData.getCell(defender.q, defender.r);
+        if (!defenderCell?.piece || defenderCell.piece.id !== defender.id) {
+          continue;
+        }
+
+        const result = resolveSingleBattle(attacker, defender);
+        results.push(result);
+        syncUI();
+
+        if (checkGameOver()) {
+          return results;
+        }
+      }
+
+      return results;
+    }
+
+    function runAiSwapBattles(firstPiece, secondPiece) {
+      const results = [];
+
+      for (const attacker of [firstPiece, secondPiece]) {
+        if (!attacker) {
+          continue;
+        }
+
+        const attackerCell = boardData.getCell(attacker.q, attacker.r);
+        if (!attackerCell?.piece || attackerCell.piece.id !== attacker.id) {
+          continue;
+        }
+
+        const defenders = getAdjacentPiecesByOwner(attacker, SIDES.PLAYER.id)
+          .sort((first, second) => (
+            aiBattleRank(attacker, first) - aiBattleRank(attacker, second)
+          ));
+
+        for (const defender of defenders) {
+          const currentAttackerCell = boardData.getCell(attacker.q, attacker.r);
+          if (
+            !currentAttackerCell?.piece
+            || currentAttackerCell.piece.id !== attacker.id
+          ) {
+            break;
+          }
+
+          const defenderCell = boardData.getCell(defender.q, defender.r);
+          if (!defenderCell?.piece || defenderCell.piece.id !== defender.id) {
+            continue;
+          }
+
+          const result = resolveSingleBattle(attacker, defender);
+          results.push(result);
+          syncUI();
+
+          if (checkGameOver()) {
+            return results;
+          }
+        }
+      }
+
+      return results;
+    }
+
+    function handleAiSwapAfterSettlement(firstPiece, secondPiece) {
+      const warTargets = buildSwapWarMap(
+        firstPiece,
+        secondPiece,
+        SIDES.PLAYER.id
+      );
+
+      if (warTargets.size === 0) {
+        endEnemyTurn("敌方完成换位 · 轮到你行动");
+        return;
+      }
+
+      if (Math.random() < 0.5) {
+        addLog("declare", "敌方选择宣战", "normal");
+        const results = runAiSwapBattles(firstPiece, secondPiece);
+
+        if (gameState.gameOver) {
+          return;
+        }
+
+        if (results.length === 0) {
+          endEnemyTurn("敌方完成换位 · 轮到你行动");
+          return;
+        }
+
+        const finishAiWar = beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          onComplete: () => endEnemyTurn("敌方完成行动 · 轮到你行动"),
+        });
+        showBattleToast(results, finishAiWar);
+        return;
+      }
+
+      addLog("declare", "敌方选择跳过宣战", "normal");
+      endEnemyTurn("敌方选择跳过宣战 · 轮到你行动");
+    }
+
+    function performAiMove(piece, targetCell) {
+      const sourceCell = boardData.getCell(piece.q, piece.r);
+      const fromLabel = sourceCell.coordLabel;
+      const toLabel = targetCell.coordLabel;
+
+      movePieceDirect(piece, targetCell);
+      gameState.trails.opponent = targetCell.id;
+      addLog(
+        "move",
+        `敌方将棋子从 ${fromLabel} 移动到 ${toLabel}`,
+        "normal"
+      );
+      syncUI();
+      const results = runAiBattles(piece);
+
+      if (gameState.gameOver) {
+        return;
+      }
+
+      if (results.length > 0) {
+        const finishAiSettlement = beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          onComplete: () => endEnemyTurn("敌方完成行动 · 轮到你行动"),
+        });
+        showBattleToast(results, finishAiSettlement);
+        return;
+      }
+
+      beginSettlement({
+        message: "结算中，请稍候…",
+        barMs: SETTLE_SHORT_MS,
+        completeMs: SETTLE_SHORT_MS,
+        onComplete: () => endEnemyTurn("敌方完成行动 · 轮到你行动"),
+      });
+    }
+
+    function runEnemyTurn() {
+      if (gameState.gameOver || isPlayerTurn()) {
+        return;
+      }
+
+      const winningMoves = getAiWinningMoves();
+      if (winningMoves.length > 0) {
+        const move = chooseRandom(winningMoves);
+        performAiMove(move.piece, move.targetCell);
+        return;
+      }
+
+      const peekPairs = getAiPeekPairs();
+      if (peekPairs.length > 0 && Math.random() < AI_PEEK_CHANCE) {
+        const pair = chooseRandom(peekPairs);
+        addLog("peek", "敌方查看了你的一枚棋子", "normal");
+        const finishPeekSettlement = beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: PEEK_RESULT_MS,
+          showBar: false,
+          onComplete: () => endEnemyTurn("敌方使用了看子 · 轮到你行动"),
+        });
+        showPeekResult(pair.playerPiece, SIDES.OPPONENT.id, finishPeekSettlement);
+        return;
+      }
+
+      const action = getRandomAiAction();
+      if (!action) {
+        beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          completeMs: SETTLE_SHORT_MS,
+          onComplete: () => endEnemyTurn("敌方没有可用行动 · 轮到你行动"),
+        });
+        return;
+      }
+
+      if (action.type === "move") {
+        performAiMove(action.piece, action.targetCell);
+      } else {
+        swapPiecePositions(action.firstPiece, action.secondPiece);
+        addLog("swap", "敌方将两枚棋子进行了换位", "normal");
+        syncUI();
+        beginSettlement({
+          message: "结算中，请稍候…",
+          barMs: SETTLE_SHORT_MS,
+          completeMs: SETTLE_SHORT_MS,
+          onComplete: () => handleAiSwapAfterSettlement(
+            action.firstPiece,
+            action.secondPiece
+          ),
+        });
+      }
+    }
+
+    function moveSelectedPiece(targetCell) {
+      const piece = gameState.selectedPiece;
+
+      if (
+        gameState.gameOver
+        || gameState.pendingCombat
+        || gameState.pendingDeclaration
+        || gameState.isLocked
+        || !isPlayerTurn()
+        || !piece
+        || !gameState.legalTargetIds.has(targetCell.id)
+        || targetCell.piece
+      ) {
+        return;
+      }
+
+      const sourceCell = boardData.getCell(piece.q, piece.r);
+      const fromLabel = sourceCell.coordLabel;
+      const toLabel = targetCell.coordLabel;
+
+      movePieceDirect(piece, targetCell);
+      gameState.trails.player = targetCell.id;
+      addLog(
+        "move",
+        `你的棋子从 ${fromLabel} 移动到 ${toLabel}`,
+        "normal"
+      );
+      gameState.moveCount += 1;
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+
+      startCombatAfterMove(piece);
+    }
+
+    function swapSelectedPieces(secondPiece) {
+      const firstPiece = gameState.selectedPiece;
+
+      if (
+        gameState.gameOver
+        || gameState.pendingCombat
+        || gameState.pendingDeclaration
+        || gameState.isLocked
+        || !isPlayerTurn()
+        || !firstPiece
+        || secondPiece.owner !== SIDES.PLAYER.id
+        || secondPiece.id === firstPiece.id
+      ) {
+        return;
+      }
+
+      const firstCell = boardData.getCell(firstPiece.q, firstPiece.r);
+      const secondCell = boardData.getCell(secondPiece.q, secondPiece.r);
+      const firstLabel = firstCell.coordLabel;
+      const secondLabel = secondCell.coordLabel;
+
+      swapPiecePositions(firstPiece, secondPiece);
+      gameState.swapCount += 1;
+      addLog(
+        "swap",
+        `你将 ${firstLabel} 与 ${secondLabel} 的棋子进行了换位`,
+        "normal"
+      );
+      gameState.selectedPiece = null;
+      gameState.legalTargetIds.clear();
+      syncUI();
+
+      beginSettlement({
+        message: "结算中，请稍候…",
+        barMs: SETTLE_SHORT_MS,
+        completeMs: SETTLE_SHORT_MS,
+        onComplete: () => enterWarDeclaration(firstPiece, secondPiece),
+      });
+    }
+
+    function handleBoardClick(event) {
+      if (gameState.gameOver) {
+        return;
+      }
+
+      if (gameState.isLocked) {
+        return;
+      }
+
+      const cellEl = event.target.closest(".cell");
+      if (!cellEl) {
+        return;
+      }
+
+      if (!isPlayerTurn()) {
+        setStatus("敌方正在思考… 请稍候", "warn");
+        return;
+      }
+
+      if (!peekConfirmLayerEl.hidden) {
+        return;
+      }
+
+      const cell = boardData.getCell(
+        Number(cellEl.dataset.q),
+        Number(cellEl.dataset.r)
+      );
+      if (!cell) {
+        return;
+      }
+
+      if (gameState.pendingDeclaration) {
+        if (
+          cell.piece?.owner === SIDES.OPPONENT.id
+          && gameState.pendingDeclaration.targetIds.has(cell.id)
+        ) {
+          startWarCombat(cell.id);
+        } else {
+          setStatus(
+            "换位后与敌方相邻，是否宣战？点击高亮敌人或使用按钮。",
+            "combat"
+          );
+        }
+        return;
+      }
+
+      if (gameState.pendingCombat) {
+        if (
+          cell.piece?.owner === SIDES.OPPONENT.id
+          && gameState.pendingCombat.targetIds.has(cell.id)
+        ) {
+          chooseCombatTarget(cell.piece);
+        } else {
+          setStatus("请选择高亮的敌方棋子作为交战目标", "warn");
+        }
+        return;
+      }
+
+      if (cell.piece?.owner === SIDES.PLAYER.id) {
+        if (gameState.selectedPiece?.id === cell.piece.id) {
+          clearSelection("已取消选择 · 点击己方棋子重新选择");
+        } else if (gameState.selectedPiece) {
+          swapSelectedPieces(cell.piece);
+        } else {
+          selectPiece(cell.piece);
+        }
+        return;
+      }
+
+      if (
+        gameState.selectedPiece
+        && gameState.legalTargetIds.has(cell.id)
+        && !cell.piece
+      ) {
+        moveSelectedPiece(cell);
+        return;
+      }
+
+      if (cell.piece?.owner === SIDES.OPPONENT.id) {
+        if (cell.piece.revealed) {
+          setStatus("该敌方棋子已经暴露 · 无需使用看子", "warn");
+        } else {
+          openPeekConfirm(cell.piece);
+        }
+        return;
+      }
+
+      if (gameState.selectedPiece) {
+        clearSelection("已取消选择 · 点击己方棋子重新选择");
+      } else {
+        setStatus("点击己方棋子行动，或点击敌方背面使用看子", "active");
+      }
+    }
+
+    /* ---------- 启动 ---------- */
+
+    deployPieces();
+    renderBoardShell();
+    mountAllPieces();
+    syncUI();
+    syncTurnUI();
+    boardEl.addEventListener("click", handleBoardClick);
+    confirmPeekButton.addEventListener("click", confirmPeek);
+    cancelPeekButton.addEventListener("click", closePeekConfirm);
+    restartButton.addEventListener("click", restartGame);
+    declareWarButton.addEventListener("click", () => startWarCombat());
+    skipWarButton.addEventListener("click", skipWar);
+    setStatus("轮到你 · 移动、换位，或点击敌方背面使用看子", "active");
+    addLog("system", "对局开始 · 你执下方", "normal");
+
+    // 暴露给调试和后续游戏逻辑。
+    window.HEX_BOARD = boardData;
+    window.HEX_DIRECTIONS = HEX_DIRECTIONS;
+    window.getNeighbors = getNeighbors;
+    window.HEX_GAME = {
+      sides: SIDES,
+      pieces: gameState.pieces,
+      state: gameState,
+      compareColors,
+    };
+
+    console.info("[六边暗棋] 6 个相邻方向：", HEX_DIRECTIONS);
+    console.info("[六边暗棋] 克制关系：红 > 蓝 > 绿 > 红；同色平局。");
+    console.info("[六边暗棋] 看子、AI 回合与胜负闭环已启用。");
+  </script>
+</body>
+</html>
